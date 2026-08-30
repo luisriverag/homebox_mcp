@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { homebox } from "../homebox/client.js";
-import { defineTool, type ToolDef } from "./types.js";
+import { defineTool, safeId, type ToolDef } from "./types.js";
 
 export const miscTools: ToolDef<any>[] = [
   defineTool({
@@ -23,7 +23,7 @@ export const miscTools: ToolDef<any>[] = [
     name: "assets_get_by_id",
     description: "Look up an item by its short numeric asset ID (as printed on asset labels/QR codes).",
     write: false,
-    shape: { assetId: z.string().describe("Asset ID, e.g. \"000-001\"") },
+    shape: { assetId: safeId.describe("Asset ID, e.g. \"000-001\"") },
     handler: ({ assetId }) => homebox.get(`/v1/assets/${assetId}`),
   }),
 

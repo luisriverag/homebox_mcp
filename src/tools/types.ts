@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+/**
+ * A Homebox resource ID as it appears in a URL path segment (UUID, or an
+ * asset ID like "000-001"). Rejects '/', '..', '#', etc. so a malformed or
+ * malicious ID can't inject extra path segments or alter which endpoint a
+ * request actually hits once interpolated into a request path.
+ */
+export const safeId = z
+  .string()
+  .min(1)
+  .regex(/^[A-Za-z0-9-]+$/, "must be a plain Homebox ID (letters, digits, '-'), with no path separators");
+
 export interface ToolDef<Shape extends z.ZodRawShape = z.ZodRawShape> {
   /** Tool name, e.g. "items_create". */
   name: string;

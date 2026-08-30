@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { homebox } from "../homebox/client.js";
-import { defineTool, type ToolDef } from "./types.js";
+import { defineTool, safeId, type ToolDef } from "./types.js";
 
-const id = z.string().describe("Homebox notifier UUID");
+const id = safeId.describe("Homebox notifier UUID");
 
 export const notifierTools: ToolDef<any>[] = [
   defineTool({
@@ -27,15 +27,24 @@ export const notifierTools: ToolDef<any>[] = [
 
   defineTool({
     name: "notifiers_update",
-    description: "Update a notifier's name, URL, or active state.",
+    description:
+      "Update a notifier's name, URL, or active state. Omitting url leaves it unchanged. Omitting isActive also leaves it unchanged (this tool looks up the notifier's current active state first, since Homebox's update endpoint otherwise defaults it to false).",
     write: true,
     shape: {
       id,
       name: z.string().min(1).max(255),
-      url: z.string().optional(),
+      url: z.string().optional().describe("Shoutrrr-format notification URL; omit to leave unchanged"),
       isActive: z.boolean().optional(),
     },
-    handler: ({ id, ...body }) => homebox.put(`/v1/notifiers/${id}`, body),
+    handler: async ({ id, ...updates }) => {
+      let currentIsActive: boolean | undefined;
+      if (updates.isActive === undefined) {
+        const list = await homebox.get<{ id: string; isActive?: boolean }[]>("/v1/notifiers");
+        currentIsActive = list.find((n) => n.id === id)?.isActive;
+      }
+      const body = { isActive: currentIsActive, ...updates };
+      return homebox.put(`/v1/notifiers/${id}`, body);
+    },
   }),
 
   defineTool({

@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { homebox } from "../homebox/client.js";
-import { defineTool, type ToolDef } from "./types.js";
+import { defineTool, safeId, type ToolDef } from "./types.js";
 
-const id = z.string().describe("Homebox location UUID");
+const id = safeId.describe("Homebox location UUID");
 
 export const locationTools: ToolDef<any>[] = [
   defineTool({
@@ -43,15 +43,27 @@ export const locationTools: ToolDef<any>[] = [
 
   defineTool({
     name: "locations_update",
-    description: "Update a location's name, description, or parent.",
+    description:
+      "Update a location's name, description, or parent. Fetches the current location first, so any field you omit (including parent) is left unchanged.",
     write: true,
     shape: {
       id,
       name: z.string().optional(),
       description: z.string().optional(),
-      parentId: z.string().nullable().optional(),
+      parentId: z.string().nullable().optional().describe("Parent location UUID, or null to un-nest"),
     },
-    handler: ({ id, ...body }) => homebox.put(`/v1/locations/${id}`, body),
+    handler: async ({ id, ...updates }) => {
+      const current = await homebox.get<{ name?: string; description?: string; parent?: { id: string } | null }>(
+        `/v1/locations/${id}`,
+      );
+      const body = {
+        name: current.name,
+        description: current.description,
+        parentId: current.parent?.id ?? null,
+        ...updates,
+      };
+      return homebox.put(`/v1/locations/${id}`, body);
+    },
   }),
 
   defineTool({

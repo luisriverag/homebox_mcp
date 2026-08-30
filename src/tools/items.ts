@@ -1,8 +1,65 @@
 import { z } from "zod";
 import { homebox } from "../homebox/client.js";
-import { defineTool, type ToolDef } from "./types.js";
+import { defineTool, safeId, type ToolDef } from "./types.js";
 
-const id = z.string().describe("Homebox item UUID");
+const id = safeId.describe("Homebox item UUID");
+
+interface ItemOut {
+  archived?: boolean;
+  assetId?: string;
+  description?: string;
+  fields?: unknown[];
+  insured?: boolean;
+  labels?: { id: string }[];
+  lifetimeWarranty?: boolean;
+  location?: { id: string } | null;
+  manufacturer?: string;
+  modelNumber?: string;
+  name?: string;
+  notes?: string;
+  parent?: { id: string } | null;
+  purchaseFrom?: string;
+  purchasePrice?: string;
+  purchaseTime?: string;
+  quantity?: number;
+  serialNumber?: string;
+  soldNotes?: string;
+  soldPrice?: string;
+  soldTime?: string;
+  soldTo?: string;
+  warrantyDetails?: string;
+  warrantyExpires?: string;
+}
+
+/** Homebox's PUT /v1/items/{id} replaces the whole item, so build a full body from the current item first. */
+function itemUpdateBodyFromCurrent(current: ItemOut) {
+  return {
+    archived: current.archived,
+    assetId: current.assetId,
+    description: current.description,
+    fields: current.fields,
+    insured: current.insured,
+    labelIds: current.labels?.map((label) => label.id) ?? [],
+    lifetimeWarranty: current.lifetimeWarranty,
+    locationId: current.location?.id,
+    manufacturer: current.manufacturer,
+    modelNumber: current.modelNumber,
+    name: current.name,
+    notes: current.notes,
+    parentId: current.parent?.id ?? null,
+    purchaseFrom: current.purchaseFrom,
+    purchasePrice: current.purchasePrice,
+    purchaseTime: current.purchaseTime,
+    quantity: current.quantity,
+    serialNumber: current.serialNumber,
+    soldNotes: current.soldNotes,
+    soldPrice: current.soldPrice,
+    soldTime: current.soldTime,
+    soldTo: current.soldTo,
+    warrantyDetails: current.warrantyDetails,
+    warrantyExpires: current.warrantyExpires,
+  };
+}
 
 export const itemTools: ToolDef<any>[] = [
   defineTool({
@@ -78,7 +135,7 @@ export const itemTools: ToolDef<any>[] = [
   defineTool({
     name: "items_update",
     description:
-      "Replace an item's full details (name, description, location, labels, purchase/warranty/sale info, custom fields, etc). Omitted fields are cleared, so prefer items_patch for small changes.",
+      "Update an item's details (name, description, location, labels, purchase/warranty/sale info, custom fields, etc). Fetches the current item first, so any field you omit is left unchanged.",
     write: true,
     shape: {
       id,
@@ -110,7 +167,11 @@ export const itemTools: ToolDef<any>[] = [
         .optional()
         .describe("Custom fields for the item"),
     },
-    handler: ({ id, ...body }) => homebox.put(`/v1/items/${id}`, body),
+    handler: async ({ id, ...updates }) => {
+      const current = await homebox.get<ItemOut>(`/v1/items/${id}`);
+      const body = { ...itemUpdateBodyFromCurrent(current), ...updates };
+      return homebox.put(`/v1/items/${id}`, body);
+    },
   }),
 
   defineTool({
@@ -168,7 +229,7 @@ export const itemTools: ToolDef<any>[] = [
     name: "items_attachment_get",
     description: "Get metadata for a single item attachment.",
     write: false,
-    shape: { id, attachmentId: z.string() },
+    shape: { id, attachmentId: safeId },
     handler: ({ id, attachmentId }) => homebox.get(`/v1/items/${id}/attachments/${attachmentId}`),
   }),
 
@@ -178,7 +239,7 @@ export const itemTools: ToolDef<any>[] = [
     write: true,
     shape: {
       id,
-      attachmentId: z.string(),
+      attachmentId: safeId,
       title: z.string().optional(),
       type: z.string().optional(),
       primary: z.boolean().optional(),
@@ -191,7 +252,7 @@ export const itemTools: ToolDef<any>[] = [
     name: "items_attachment_delete",
     description: "Delete an attachment from an item.",
     write: true,
-    shape: { id, attachmentId: z.string() },
+    shape: { id, attachmentId: safeId },
     handler: ({ id, attachmentId }) => homebox.delete(`/v1/items/${id}/attachments/${attachmentId}`),
   }),
 
@@ -224,7 +285,7 @@ export const itemTools: ToolDef<any>[] = [
     write: true,
     shape: {
       id,
-      entryId: z.string(),
+      entryId: safeId,
       name: z.string().optional(),
       description: z.string().optional(),
       cost: z.string().optional(),
@@ -238,7 +299,7 @@ export const itemTools: ToolDef<any>[] = [
     name: "items_maintenance_delete",
     description: "Delete a maintenance log entry from an item.",
     write: true,
-    shape: { id, entryId: z.string() },
+    shape: { id, entryId: safeId },
     handler: ({ id, entryId }) => homebox.delete(`/v1/items/${id}/maintenance/${entryId}`),
   }),
 ];
