@@ -1,7 +1,7 @@
 {
   "name": "homebox-mcp",
   "version": "0.1.0",
-  "description": "MCP server and Telegram natural-language agent for a self-hosted Homebox inventory instance",
+  "description": "MCP server for a self-hosted Homebox inventory instance, covering all read and write API endpoints",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
@@ -9,17 +9,12 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "mcp": "MODE=mcp tsx src/index.ts",
-    "bot": "MODE=telegram tsx src/index.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1",
     "@modelcontextprotocol/sdk": "^1.7.0",
     "dotenv": "^16.4.5",
-    "grammy": "^1.46.0",
-    "zod": "^3.23.8",
-    "zod-to-json-schema": "^3.23.5"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
