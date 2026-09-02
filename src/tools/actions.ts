@@ -33,4 +33,12 @@ export const actionTools: ToolDef<any>[] = [
     shape: {},
     handler: () => homebox.post("/v1/actions/zero-item-time-fields"),
   }),
+
+  defineTool({
+    name: "actions_create_missing_thumbnails",
+    description: "Bulk action: generate thumbnails for item photos that don't have one yet.",
+    write: true,
+    shape: {},
+    handler: () => homebox.post("/v1/actions/create-missing-thumbnails"),
+  }),
 ];

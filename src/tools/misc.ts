@@ -16,7 +16,7 @@ export const miscTools: ToolDef<any>[] = [
     description: "List the currencies Homebox supports.",
     write: false,
     shape: {},
-    handler: () => homebox.get("/v1/currency"),
+    handler: () => homebox.get("/v1/currencies"),
   }),
 
   defineTool({

@@ -67,10 +67,20 @@ export class HomeboxClient {
     if (!res.ok) {
       throw new HomeboxApiError(res.status, "/v1/users/login", data);
     }
-    const expiresAt = data.expiresAt
-      ? Date.parse(data.expiresAt)
-      : Date.now() + 1000 * 60 * 60 * 12;
-    return { token: data.token as string, expiresAt };
+    // Homebox's login response already returns the token prefixed with
+    // "Bearer " (e.g. "Bearer abc123..."). Strip any such prefix here so we
+    // always add exactly one when building the Authorization header below —
+    // otherwise every subsequent request sends "Bearer Bearer <token>" and
+    // Homebox rejects it with 401 "valid authorization token is required".
+    const rawToken = typeof data.token === "string" ? data.token.replace(/^Bearer\s+/i, "").trim() : "";
+    if (!rawToken) {
+      throw new Error(
+        `Homebox login returned HTTP ${res.status} but no usable token in the response body: ${JSON.stringify(data).slice(0, 500)}`,
+      );
+    }
+    const parsedExpiresAt = data.expiresAt ? Date.parse(data.expiresAt) : NaN;
+    const expiresAt = Number.isFinite(parsedExpiresAt) ? parsedExpiresAt : Date.now() + 1000 * 60 * 60 * 12;
+    return { token: rawToken, expiresAt };
   }
 
   private async getToken(forceRefresh = false): Promise<string> {

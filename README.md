@@ -1,10 +1,13 @@
 # homebox-mcp
 
 An [MCP](https://modelcontextprotocol.io) server for a self-hosted
-[Homebox](https://homebox.software) inventory instance. It covers every
-read **and** write endpoint of the [Homebox API](https://homebox.software/en/api/):
-items, locations, labels, notifiers, maintenance entries, attachments,
-users, group settings, statistics, bulk actions, QR codes, and CSV
+[Homebox](https://homebox.software) inventory instance — specifically the
+actively-maintained [sysadminsmedia/homebox](https://github.com/sysadminsmedia/homebox)
+fork's current API (`entities`/`tags`), not the older, archived `hay-kot/homebox`
+API (`items`/`labels`/`locations`) that most existing docs and search results
+still describe. It covers every read **and** write endpoint: items,
+locations, tags, notifiers, maintenance entries, attachments, users, group
+settings/members/invitations, statistics, bulk actions, QR codes, and CSV
 import/export.
 
 This is a plain stdio MCP server with no bundled chat front end — point any
@@ -125,24 +128,46 @@ docker run -i --rm --env-file .env homebox-mcp
 
 ## Tool coverage
 
-All 40 Homebox v1 API endpoints are covered, exposed as 56 MCP tools:
+64 MCP tools, covering Homebox's current `/v1/entities` + `/v1/tags` API:
 
-- **Items** — list/search, get, create, update, patch (quantity), delete,
-  breadcrumb path, custom fields, CSV import/export, attachments
-  (add/get/update/delete), maintenance log (list/create/update/delete)
-- **Locations** — list, tree, get, create, update, delete
-- **Labels** — list, get, create, update, delete
+- **Items** — list/search, get, create, update, patch, delete, breadcrumb
+  path, custom fields, CSV import/export, attachments (add/get/update/
+  delete, plus external/link attachments), maintenance log (list/create/
+  update/delete, plus an all-items maintenance query)
+- **Locations** — list, tree, get, create, update, delete. Homebox has no
+  separate "locations" resource anymore — a location is an entity whose
+  entity type has `isLocation: true`; `locations_list`/`locations_tree` use
+  `/v1/entities/tree`, which is still location-scoped.
+- **Tags** — list, get, create, update, delete (called "Labels" in the
+  archived Homebox API)
+- **Entity types** — list (the built-in "Item"/"Location" types plus any
+  custom templates, and their `isLocation` flag)
 - **Notifiers** — list, create, update, delete, test
 - **Users** — get/update/delete self, change password, register (via group
   invitation)
-- **Group** — get/update settings, invitations, statistics (overall, by
-  label, by location, purchase price over time)
+- **Group** — get/update settings, invitations (list/create/delete),
+  members (list/remove), statistics (overall, by tag, by location, purchase
+  price over time)
 - **Bulk actions** — ensure asset IDs, ensure import refs, set primary
-  photos, zero item time fields
+  photos, zero item time fields, create missing thumbnails
 - **Misc** — server status, currency list, asset-ID lookup, QR code
   generation, bill-of-materials report
 
 See `src/tools/*.ts` for the exact input schema of each tool.
+
+### A note on Homebox API versions
+
+Homebox's original repo (`hay-kot/homebox`) was archived; active development
+continues at `sysadminsmedia/homebox`, which reorganized the API somewhere
+around mid-2025: `items` and `locations` merged into a single generic
+`entities` resource (distinguished by an `entityTypeId`, with locations
+being entities whose type has `isLocation: true`), and `labels` was renamed
+to `tags`. If you're running an old, unmaintained fork still on the
+`items`/`locations`/`labels` API, this version of homebox_mcp will not work
+against it — every call will 404. Check what your instance actually serves
+with `curl http://<your-homebox>/api/v1/status` (always works, no auth) and
+`curl http://<your-homebox>/api/v1/entities` vs `.../api/v1/items` (with a
+valid Bearer token) to see which one responds instead of 404.
 
 ## Development
 

@@ -1,81 +1,31 @@
 import { z } from "zod";
 import { homebox } from "../homebox/client.js";
+import { resolveEntityTypeId } from "../homebox/entityTypes.js";
+import { entityUpdateBodyFromCurrent, type EntityOut } from "../homebox/entityMerge.js";
 import { defineTool, safeId, type ToolDef } from "./types.js";
 
-const id = safeId.describe("Homebox item UUID");
-
-interface ItemOut {
-  archived?: boolean;
-  assetId?: string;
-  description?: string;
-  fields?: unknown[];
-  insured?: boolean;
-  labels?: { id: string }[];
-  lifetimeWarranty?: boolean;
-  location?: { id: string } | null;
-  manufacturer?: string;
-  modelNumber?: string;
-  name?: string;
-  notes?: string;
-  parent?: { id: string } | null;
-  purchaseFrom?: string;
-  purchasePrice?: string;
-  purchaseTime?: string;
-  quantity?: number;
-  serialNumber?: string;
-  soldNotes?: string;
-  soldPrice?: string;
-  soldTime?: string;
-  soldTo?: string;
-  warrantyDetails?: string;
-  warrantyExpires?: string;
-}
-
-/** Homebox's PUT /v1/items/{id} replaces the whole item, so build a full body from the current item first. */
-function itemUpdateBodyFromCurrent(current: ItemOut) {
-  return {
-    archived: current.archived,
-    assetId: current.assetId,
-    description: current.description,
-    fields: current.fields,
-    insured: current.insured,
-    labelIds: current.labels?.map((label) => label.id) ?? [],
-    lifetimeWarranty: current.lifetimeWarranty,
-    locationId: current.location?.id,
-    manufacturer: current.manufacturer,
-    modelNumber: current.modelNumber,
-    name: current.name,
-    notes: current.notes,
-    parentId: current.parent?.id ?? null,
-    purchaseFrom: current.purchaseFrom,
-    purchasePrice: current.purchasePrice,
-    purchaseTime: current.purchaseTime,
-    quantity: current.quantity,
-    serialNumber: current.serialNumber,
-    soldNotes: current.soldNotes,
-    soldPrice: current.soldPrice,
-    soldTime: current.soldTime,
-    soldTo: current.soldTo,
-    warrantyDetails: current.warrantyDetails,
-    warrantyExpires: current.warrantyExpires,
-  };
-}
+const id = safeId.describe("Homebox entity (item) UUID");
 
 export const itemTools: ToolDef<any>[] = [
   defineTool({
     name: "items_list",
     description:
-      "List/search items in the Homebox inventory. Supports free-text search and filtering by label, location, or parent item.",
+      "List/search items in the Homebox inventory. Supports free-text search and filtering by tag or parent item/location ID (there's no direct \"only show items in location X\" filter — use parentIds with that location's ID, or items_get/locations_get to see an entity's direct children). Homebox's search endpoint returns items and locations/containers mixed together (there's no server-side type filter); this tool drops results that are themselves locations, so a page may come back with fewer than pageSize items — use locations_list/locations_tree to browse locations specifically.",
     write: false,
     shape: {
       q: z.string().optional().describe("Free-text search string"),
       page: z.number().int().min(1).optional(),
       pageSize: z.number().int().min(1).max(200).optional(),
-      labels: z.array(z.string()).optional().describe("Filter by label IDs"),
-      locations: z.array(z.string()).optional().describe("Filter by location IDs"),
-      parentIds: z.array(z.string()).optional().describe("Filter by parent item IDs"),
+      tags: z.array(z.string()).optional().describe("Filter by tag IDs"),
+      parentIds: z.array(z.string()).optional().describe("Filter by parent item/location IDs"),
     },
-    handler: (args) => homebox.get("/v1/items", args as any),
+    handler: async (args: any) => {
+      const result: any = await homebox.get("/v1/entities", args);
+      if (Array.isArray(result?.items)) {
+        result.items = result.items.filter((entity: EntityOut) => !entity.entityType?.isLocation);
+      }
+      return result;
+    },
   }),
 
   defineTool({
@@ -83,7 +33,7 @@ export const itemTools: ToolDef<any>[] = [
     description: "Get full details of a single item by ID.",
     write: false,
     shape: { id },
-    handler: ({ id }) => homebox.get(`/v1/items/${id}`),
+    handler: ({ id }) => homebox.get(`/v1/entities/${id}`),
   }),
 
   defineTool({
@@ -91,7 +41,7 @@ export const itemTools: ToolDef<any>[] = [
     description: "Get the breadcrumb path (ancestor locations) of an item.",
     write: false,
     shape: { id },
-    handler: ({ id }) => homebox.get(`/v1/items/${id}/path`),
+    handler: ({ id }) => homebox.get(`/v1/entities/${id}/path`),
   }),
 
   defineTool({
@@ -99,15 +49,15 @@ export const itemTools: ToolDef<any>[] = [
     description: "List the distinct custom field names used across all items.",
     write: false,
     shape: {},
-    handler: () => homebox.get("/v1/items/fields"),
+    handler: () => homebox.get("/v1/entities/fields"),
   }),
 
   defineTool({
     name: "items_field_values",
     description: "List the distinct values used for a given custom field name.",
     write: false,
-    shape: { field: z.string().optional() },
-    handler: (args) => homebox.get("/v1/items/fields/values", args as any),
+    shape: { field: z.string() },
+    handler: (args) => homebox.get("/v1/entities/fields/values", args as any),
   }),
 
   defineTool({
@@ -115,7 +65,7 @@ export const itemTools: ToolDef<any>[] = [
     description: "Export the full inventory as a CSV string.",
     write: false,
     shape: {},
-    handler: () => homebox.request("GET", "/v1/items/export", { raw: true }),
+    handler: () => homebox.request("GET", "/v1/entities/export", { raw: true }),
   }),
 
   defineTool({
@@ -125,26 +75,36 @@ export const itemTools: ToolDef<any>[] = [
     shape: {
       name: z.string().min(1).max(255),
       description: z.string().max(1000).optional(),
-      locationId: z.string().describe("Location UUID the item lives in"),
-      labelIds: z.array(z.string()).optional(),
-      parentId: z.string().optional().describe("Parent item UUID, if this is a sub-item"),
+      parentId: safeId.optional().describe("Location or parent item UUID the item lives in"),
+      tagIds: z.array(z.string()).optional(),
+      quantity: z.number().optional(),
+      manufacturer: z.string().optional(),
+      modelNumber: z.string().optional(),
+      entityTypeId: safeId
+        .optional()
+        .describe(
+          "Custom entity-type/template UUID (see entity_types_list). Omit to use the group's default item type.",
+        ),
     },
-    handler: (args) => homebox.post("/v1/items", args),
+    handler: async ({ entityTypeId, ...body }) => {
+      const resolvedTypeId = await resolveEntityTypeId("item", entityTypeId);
+      return homebox.post("/v1/entities", { ...body, entityTypeId: resolvedTypeId });
+    },
   }),
 
   defineTool({
     name: "items_update",
     description:
-      "Update an item's details (name, description, location, labels, purchase/warranty/sale info, custom fields, etc). Fetches the current item first, so any field you omit is left unchanged.",
+      "Update an item's details (name, description, tags, purchase/warranty/sale info, custom fields, etc). Fetches the current item first, so any field you omit is left unchanged. To move an item, change its parentId.",
     write: true,
     shape: {
       id,
       name: z.string().optional(),
       description: z.string().optional(),
-      quantity: z.number().int().optional(),
-      locationId: z.string().optional(),
-      labelIds: z.array(z.string()).optional(),
-      parentId: z.string().nullable().optional(),
+      quantity: z.number().optional(),
+      parentId: safeId.nullable().optional().describe("Location or parent item UUID, or null to un-nest"),
+      tagIds: z.array(z.string()).optional(),
+      entityTypeId: safeId.optional(),
       archived: z.boolean().optional(),
       insured: z.boolean().optional(),
       assetId: z.string().optional(),
@@ -153,33 +113,48 @@ export const itemTools: ToolDef<any>[] = [
       serialNumber: z.string().optional(),
       notes: z.string().optional(),
       purchaseFrom: z.string().optional(),
-      purchasePrice: z.string().optional().describe("Decimal amount as a string, e.g. \"19.99\""),
-      purchaseTime: z.string().optional().describe("ISO 8601 date"),
+      purchasePrice: z.number().optional(),
+      purchaseDate: z.string().optional().describe("ISO 8601 date"),
       soldTo: z.string().optional(),
-      soldPrice: z.string().optional(),
-      soldTime: z.string().optional().describe("ISO 8601 date"),
+      soldPrice: z.number().optional(),
+      soldDate: z.string().optional().describe("ISO 8601 date"),
       soldNotes: z.string().optional(),
       lifetimeWarranty: z.boolean().optional(),
       warrantyExpires: z.string().optional().describe("ISO 8601 date"),
       warrantyDetails: z.string().optional(),
       fields: z
-        .array(z.object({ id: z.string().optional(), name: z.string(), type: z.string().optional(), textValue: z.string().optional() }))
+        .array(
+          z.object({
+            id: z.string().optional(),
+            name: z.string(),
+            type: z.string().optional(),
+            textValue: z.string().optional(),
+            numberValue: z.number().optional(),
+            booleanValue: z.boolean().optional(),
+          }),
+        )
         .optional()
         .describe("Custom fields for the item"),
     },
     handler: async ({ id, ...updates }) => {
-      const current = await homebox.get<ItemOut>(`/v1/items/${id}`);
-      const body = { ...itemUpdateBodyFromCurrent(current), ...updates };
-      return homebox.put(`/v1/items/${id}`, body);
+      const current = await homebox.get<EntityOut>(`/v1/entities/${id}`);
+      const body = { ...entityUpdateBodyFromCurrent(current), ...updates };
+      return homebox.put(`/v1/entities/${id}`, body);
     },
   }),
 
   defineTool({
     name: "items_patch",
-    description: "Partially update an item. Currently only supports changing quantity.",
+    description: "Partially update an item: quantity, tags, parent, or entity type.",
     write: true,
-    shape: { id, quantity: z.number().int() },
-    handler: ({ id, ...body }) => homebox.patch(`/v1/items/${id}`, body),
+    shape: {
+      id,
+      quantity: z.number().optional(),
+      tagIds: z.array(z.string()).optional(),
+      parentId: safeId.nullable().optional(),
+      entityTypeId: safeId.optional(),
+    },
+    handler: ({ id, ...body }) => homebox.patch(`/v1/entities/${id}`, body),
   }),
 
   defineTool({
@@ -187,7 +162,7 @@ export const itemTools: ToolDef<any>[] = [
     description: "Permanently delete an item.",
     write: true,
     shape: { id },
-    handler: ({ id }) => homebox.delete(`/v1/items/${id}`),
+    handler: ({ id }) => homebox.delete(`/v1/entities/${id}`),
   }),
 
   defineTool({
@@ -196,9 +171,9 @@ export const itemTools: ToolDef<any>[] = [
     write: true,
     shape: { csv: z.string().describe("CSV file content") },
     handler: ({ csv }) =>
-      homebox.request("POST", "/v1/items/import", {
+      homebox.request("POST", "/v1/entities/import", {
         multipart: true,
-        body: { file: new Blob([csv], { type: "text/csv" }) },
+        body: { csv: new Blob([csv], { type: "text/csv" }) },
       }),
   }),
 
@@ -213,15 +188,39 @@ export const itemTools: ToolDef<any>[] = [
       type: z
         .enum(["photo", "manual", "warranty", "attachment", "receipt"])
         .describe("Attachment type"),
+      primary: z.boolean().optional().describe("Set as the item's primary photo"),
     },
-    handler: ({ id, fileBase64, fileName, type }) =>
-      homebox.request("POST", `/v1/items/${id}/attachments`, {
+    handler: ({ id, fileBase64, fileName, type, primary }) =>
+      homebox.request("POST", `/v1/entities/${id}/attachments`, {
         multipart: true,
         body: {
           file: new Blob([Buffer.from(fileBase64, "base64")]),
           name: fileName,
           type,
+          ...(primary !== undefined ? { primary: String(primary) } : {}),
         },
+      }),
+  }),
+
+  defineTool({
+    name: "items_attachment_add_external",
+    description: "Link an item to a document or URL in an external system, without uploading the file itself.",
+    write: true,
+    shape: {
+      id,
+      externalId: z.string().describe("ID/URL of the external document"),
+      sourceType: z.string().describe("What kind of external system this is, e.g. \"url\""),
+      attachmentType: z
+        .enum(["photo", "manual", "warranty", "attachment", "receipt"])
+        .describe("Attachment type"),
+      title: z.string().optional(),
+    },
+    handler: ({ id, externalId, sourceType, attachmentType, title }) =>
+      homebox.post(`/v1/entities/${id}/attachments/external`, {
+        external_id: externalId,
+        source_type: sourceType,
+        attachment_type: attachmentType,
+        title,
       }),
   }),
 
@@ -230,7 +229,7 @@ export const itemTools: ToolDef<any>[] = [
     description: "Get metadata for a single item attachment.",
     write: false,
     shape: { id, attachmentId: safeId },
-    handler: ({ id, attachmentId }) => homebox.get(`/v1/items/${id}/attachments/${attachmentId}`),
+    handler: ({ id, attachmentId }) => homebox.get(`/v1/entities/${id}/attachments/${attachmentId}`),
   }),
 
   defineTool({
@@ -245,7 +244,7 @@ export const itemTools: ToolDef<any>[] = [
       primary: z.boolean().optional(),
     },
     handler: ({ id, attachmentId, ...body }) =>
-      homebox.put(`/v1/items/${id}/attachments/${attachmentId}`, body),
+      homebox.put(`/v1/entities/${id}/attachments/${attachmentId}`, body),
   }),
 
   defineTool({
@@ -253,15 +252,26 @@ export const itemTools: ToolDef<any>[] = [
     description: "Delete an attachment from an item.",
     write: true,
     shape: { id, attachmentId: safeId },
-    handler: ({ id, attachmentId }) => homebox.delete(`/v1/items/${id}/attachments/${attachmentId}`),
+    handler: ({ id, attachmentId }) => homebox.delete(`/v1/entities/${id}/attachments/${attachmentId}`),
   }),
 
   defineTool({
     name: "items_maintenance_list",
     description: "List maintenance log entries for an item.",
     write: false,
-    shape: { id },
-    handler: ({ id }) => homebox.get(`/v1/items/${id}/maintenance`),
+    shape: {
+      id,
+      status: z.enum(["scheduled", "completed", "both"]).optional(),
+    },
+    handler: ({ id, ...query }) => homebox.get(`/v1/entities/${id}/maintenance`, query as any),
+  }),
+
+  defineTool({
+    name: "maintenance_list_all",
+    description: "List maintenance log entries across every item in the inventory.",
+    write: false,
+    shape: { status: z.enum(["scheduled", "completed", "both"]).optional() },
+    handler: (args) => homebox.get("/v1/maintenance", args as any),
   }),
 
   defineTool({
@@ -276,7 +286,7 @@ export const itemTools: ToolDef<any>[] = [
       scheduledDate: z.string().optional().describe("ISO 8601 date"),
       completedDate: z.string().optional().describe("ISO 8601 date"),
     },
-    handler: ({ id, ...body }) => homebox.post(`/v1/items/${id}/maintenance`, body),
+    handler: ({ id, ...body }) => homebox.post(`/v1/entities/${id}/maintenance`, body),
   }),
 
   defineTool({
@@ -284,22 +294,21 @@ export const itemTools: ToolDef<any>[] = [
     description: "Update a maintenance log entry (e.g. mark it completed).",
     write: true,
     shape: {
-      id,
-      entryId: safeId,
+      entryId: safeId.describe("Maintenance entry UUID"),
       name: z.string().optional(),
       description: z.string().optional(),
       cost: z.string().optional(),
       scheduledDate: z.string().optional(),
       completedDate: z.string().optional(),
     },
-    handler: ({ id, entryId, ...body }) => homebox.put(`/v1/items/${id}/maintenance/${entryId}`, body),
+    handler: ({ entryId, ...body }) => homebox.put(`/v1/maintenance/${entryId}`, body),
   }),
 
   defineTool({
     name: "items_maintenance_delete",
-    description: "Delete a maintenance log entry from an item.",
+    description: "Delete a maintenance log entry.",
     write: true,
-    shape: { id, entryId: safeId },
-    handler: ({ id, entryId }) => homebox.delete(`/v1/items/${id}/maintenance/${entryId}`),
+    shape: { entryId: safeId.describe("Maintenance entry UUID") },
+    handler: ({ entryId }) => homebox.delete(`/v1/maintenance/${entryId}`),
   }),
 ];

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { homebox } from "../homebox/client.js";
-import { defineTool, type ToolDef } from "./types.js";
+import { defineTool, safeId, type ToolDef } from "./types.js";
 
 export const groupTools: ToolDef<any>[] = [
   defineTool({
@@ -31,6 +31,38 @@ export const groupTools: ToolDef<any>[] = [
   }),
 
   defineTool({
+    name: "group_invitations_list",
+    description: "List outstanding group invitations.",
+    write: false,
+    shape: {},
+    handler: () => homebox.get("/v1/groups/invitations"),
+  }),
+
+  defineTool({
+    name: "group_invitations_delete",
+    description: "Revoke a group invitation.",
+    write: true,
+    shape: { id: safeId.describe("Invitation UUID") },
+    handler: ({ id }) => homebox.delete(`/v1/groups/invitations/${id}`),
+  }),
+
+  defineTool({
+    name: "group_members_list",
+    description: "List all members of the current group.",
+    write: false,
+    shape: {},
+    handler: () => homebox.get("/v1/groups/members"),
+  }),
+
+  defineTool({
+    name: "group_members_remove",
+    description: "Remove a user from the group.",
+    write: true,
+    shape: { userId: safeId.describe("User UUID") },
+    handler: ({ userId }) => homebox.delete(`/v1/groups/members/${userId}`),
+  }),
+
+  defineTool({
     name: "group_statistics",
     description: "Get high-level inventory statistics for the group (total items, total value, etc).",
     write: false,
@@ -39,11 +71,11 @@ export const groupTools: ToolDef<any>[] = [
   }),
 
   defineTool({
-    name: "group_statistics_labels",
-    description: "Get item-count statistics broken down by label.",
+    name: "group_statistics_tags",
+    description: "Get item-count statistics broken down by tag.",
     write: false,
     shape: {},
-    handler: () => homebox.get("/v1/groups/statistics/labels"),
+    handler: () => homebox.get("/v1/groups/statistics/tags"),
   }),
 
   defineTool({

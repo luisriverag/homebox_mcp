@@ -2,22 +2,24 @@ import { config } from "../config.js";
 import type { ToolDef } from "./types.js";
 import { itemTools } from "./items.js";
 import { locationTools } from "./locations.js";
-import { labelTools } from "./labels.js";
+import { tagTools } from "./tags.js";
 import { notifierTools } from "./notifiers.js";
 import { userTools } from "./users.js";
 import { groupTools } from "./group.js";
 import { actionTools } from "./actions.js";
 import { miscTools } from "./misc.js";
+import { entityTypeTools } from "./entity_types.js";
 
 export const allTools: ToolDef<any>[] = [
   ...itemTools,
   ...locationTools,
-  ...labelTools,
+  ...tagTools,
   ...notifierTools,
   ...userTools,
   ...groupTools,
   ...actionTools,
   ...miscTools,
+  ...entityTypeTools,
 ];
 
 /** Tools available given the current READONLY setting: write tools are dropped entirely when READONLY=Y. */
