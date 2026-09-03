@@ -45,6 +45,12 @@ export function buildServer(): McpServer {
               : err instanceof Error
                 ? err.message
                 : String(err);
+          // Converting this to a normal (isError) tool result means it
+          // never becomes an unhandled-exception log line anywhere --
+          // without logging it here explicitly, a failing tool call is
+          // invisible server-side, only ever seen as whatever the
+          // client's model paraphrases it into for the end user.
+          console.error(`homebox-mcp: tool ${tool.name} failed:`, message);
           return { content: [{ type: "text" as const, text: `Error: ${message}` }], isError: true };
         }
       },
