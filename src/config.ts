@@ -7,12 +7,37 @@ function parseBoolYN(name: string, fallback: "Y" | "N"): boolean {
   throw new Error(`Environment variable ${name} must be Y or N, got: ${raw}`);
 }
 
+function parseTransport(name: string, fallback: "stdio" | "http"): "stdio" | "http" {
+  const raw = (process.env[name] ?? fallback).trim().toLowerCase();
+  if (raw === "stdio" || raw === "http") return raw;
+  throw new Error(`Environment variable ${name} must be "stdio" or "http", got: ${raw}`);
+}
+
 export const config = {
   readonly: parseBoolYN("READONLY", "Y"),
   homebox: {
     url: (process.env.HOMEBOX_URL ?? "http://localhost:7745").replace(/\/+$/, ""),
     username: process.env.HOMEBOX_USERNAME ?? "",
     password: process.env.HOMEBOX_PASSWORD ?? "",
+  },
+  // Defaults to stdio (a client spawns this process and pipes its
+  // stdin/stdout directly, for local/CLI-managed use). "http" instead
+  // serves MCP over Streamable HTTP as an always-on service — for a
+  // client on a different host/container, or the Docker image (which
+  // sets this to "http" itself). See README.md, "Running as an HTTP
+  // service".
+  mcp: {
+    transport: parseTransport("MCP_TRANSPORT", "stdio"),
+    httpHost: process.env.MCP_HTTP_HOST ?? "0.0.0.0",
+    httpPort: Number.parseInt(process.env.MCP_HTTP_PORT ?? "8765", 10),
+    httpPath: process.env.MCP_HTTP_PATH ?? "/mcp",
+    // Required in practice whenever transport is "http": every request
+    // must carry a matching `Authorization: Bearer <this>` header,
+    // checked with a constant-time compare. Leave unset only if the
+    // network path here is deliberately trusted on its own — an unset
+    // token on an otherwise reachable port lets anyone who can reach it
+    // drive every tool this server exposes.
+    authToken: process.env.MCP_AUTH_TOKEN ?? "",
   },
 };
 
