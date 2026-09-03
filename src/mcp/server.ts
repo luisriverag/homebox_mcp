@@ -1,12 +1,28 @@
 import { timingSafeEqual } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
-import type { Request, Response, NextFunction } from "express";
 import { config } from "../config.js";
 import { activeTools } from "../tools/index.js";
 import { HomeboxApiError } from "../homebox/client.js";
+
+// Keep the few Express-facing annotations structural. Express is only used
+// indirectly through createMcpExpressApp(), and importing its DefinitelyTyped
+// declarations here made an otherwise valid build depend on @types/express
+// being present in the local node_modules tree.
+interface HttpRequest extends IncomingMessage {
+  body: unknown;
+  header(name: string): string | undefined;
+}
+
+interface HttpResponse extends ServerResponse {
+  status(code: number): HttpResponse;
+  json(body: unknown): HttpResponse;
+}
+
+type Next = () => void;
 
 function resultToContent(result: unknown) {
   if (result === undefined) {
@@ -102,7 +118,7 @@ async function runHttpServer(): Promise<void> {
 
   const app = createMcpExpressApp({ host: httpHost });
 
-  app.use((req: Request, res: Response, next: NextFunction) => {
+  app.use((req: HttpRequest, res: HttpResponse, next: Next) => {
     if (!authToken) {
       next();
       return;
@@ -118,7 +134,7 @@ async function runHttpServer(): Promise<void> {
   // Stateless: a fresh McpServer + transport per request, no session store
   // to manage — this is a single-admin-user tool, not a multi-tenant
   // service, so there's nothing sessions would buy here.
-  app.post(httpPath, async (req: Request, res: Response) => {
+  app.post(httpPath, async (req: HttpRequest, res: HttpResponse) => {
     let server: McpServer | undefined;
     let transport: StreamableHTTPServerTransport | undefined;
     let cleanedUp = false;
@@ -155,7 +171,7 @@ async function runHttpServer(): Promise<void> {
     }
   });
 
-  const methodNotAllowed = (_req: Request, res: Response) => {
+  const methodNotAllowed = (_req: HttpRequest, res: HttpResponse) => {
     res.status(405).json({
       jsonrpc: "2.0",
       error: { code: -32000, message: "Method not allowed." },
