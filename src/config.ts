@@ -13,6 +13,16 @@ function parseTransport(name: string, fallback: "stdio" | "http"): "stdio" | "ht
   throw new Error(`Environment variable ${name} must be "stdio" or "http", got: ${raw}`);
 }
 
+function parsePort(name: string, fallback: number): number {
+  const raw = (process.env[name] ?? "").trim();
+  if (!raw) return fallback;
+  const port = Number.parseInt(raw, 10);
+  if (!Number.isInteger(port) || port < 1 || port > 65535 || String(port) !== raw) {
+    throw new Error(`Environment variable ${name} must be a port number (1-65535), got: ${raw}`);
+  }
+  return port;
+}
+
 export const config = {
   readonly: parseBoolYN("READONLY", "Y"),
   homebox: {
@@ -29,7 +39,7 @@ export const config = {
   mcp: {
     transport: parseTransport("MCP_TRANSPORT", "stdio"),
     httpHost: process.env.MCP_HTTP_HOST ?? "0.0.0.0",
-    httpPort: Number.parseInt(process.env.MCP_HTTP_PORT ?? "8765", 10),
+    httpPort: parsePort("MCP_HTTP_PORT", 8765),
     httpPath: process.env.MCP_HTTP_PATH ?? "/mcp",
     // Required in practice whenever transport is "http": every request
     // must carry a matching `Authorization: Bearer <this>` header,

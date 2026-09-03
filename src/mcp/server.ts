@@ -119,15 +119,29 @@ async function runHttpServer(): Promise<void> {
   // to manage — this is a single-admin-user tool, not a multi-tenant
   // service, so there's nothing sessions would buy here.
   app.post(httpPath, async (req: Request, res: Response) => {
-    const server = buildServer();
+    let server: McpServer | undefined;
+    let transport: StreamableHTTPServerTransport | undefined;
+    let cleanedUp = false;
+    // Idempotent, and registered on the response's own "close" event before
+    // handleRequest is even called: closing only after a successful handoff
+    // misses a client that disconnects mid-request (res "close" can fire
+    // during that await), and only closing from a catch block misses a
+    // throw from the transport's own constructor. Either gap leaks one
+    // McpServer + transport pair per request on a long-running,
+    // restart:always service.
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      transport?.close();
+      server?.close();
+    };
+
     try {
-      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      server = buildServer();
+      transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      res.on("close", cleanup);
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
-      res.on("close", () => {
-        transport.close();
-        server.close();
-      });
     } catch (err) {
       console.error("homebox-mcp: error handling MCP request:", err);
       if (!res.headersSent) {
@@ -137,6 +151,7 @@ async function runHttpServer(): Promise<void> {
           id: null,
         });
       }
+      cleanup();
     }
   });
 
@@ -150,6 +165,7 @@ async function runHttpServer(): Promise<void> {
   app.get(httpPath, methodNotAllowed);
   app.delete(httpPath, methodNotAllowed);
 
+  let startupSettled = false;
   await new Promise<void>((resolve, reject) => {
     const server = app.listen(httpPort, httpHost, () => {
       console.error(
@@ -157,8 +173,16 @@ async function runHttpServer(): Promise<void> {
           `(${activeTools().length} tools, READONLY=${config.readonly ? "Y" : "N"}, ` +
           `auth=${authToken ? "on" : "OFF"})`,
       );
+      startupSettled = true;
       resolve();
     });
-    server.on("error", reject);
+    // Rejecting after the promise above already resolved is a no-op, so a
+    // *later* listener error (EMFILE under load, etc.) would otherwise be
+    // silently swallowed — always log it too, so the service doesn't keep
+    // "running" with a dead listener and zero operator-visible signal.
+    server.on("error", (err) => {
+      console.error("homebox-mcp: HTTP server error:", err);
+      if (!startupSettled) reject(err);
+    });
   });
 }
