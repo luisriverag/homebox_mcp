@@ -155,8 +155,14 @@ See that repo's README, "Homebox Integration", for the full list.
 
 ```bash
 cp .env.example .env   # fill in HOMEBOX_URL/USERNAME/PASSWORD, MCP_AUTH_TOKEN, ...
+cp docker-compose.yml.sample docker-compose.yml
 docker compose up -d --build
 ```
+
+`docker-compose.yml` is gitignored (like `.env`) precisely so a later
+`git pull` never clobbers anything you change in it — edit your own copy
+freely; `docker-compose.yml.sample` is the tracked template to re-diff
+against if this project changes it.
 
 The image runs this server with `MCP_TRANSPORT=http` and `restart:
 always`, publishing port 8765 (see `docker-compose.yml` to change it or
