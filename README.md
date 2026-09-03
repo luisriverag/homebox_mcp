@@ -10,11 +10,14 @@ locations, tags, notifiers, maintenance entries, attachments, users, group
 settings/members/invitations, statistics, bulk actions, QR codes, and CSV
 import/export.
 
-This is a plain stdio MCP server with no bundled chat front end — point any
+This is a plain MCP server with no bundled chat front end — point any
 MCP-capable client at it: Claude Desktop, Claude Code, or a bot like
 [ocabra_telegram](https://github.com/luisriverag/ocabra_telegram), which
 uses this server's tools to give natural-language, tool-calling access to
-your inventory over Telegram.
+your inventory over Telegram. Defaults to stdio (a client spawns this
+process directly); set `MCP_TRANSPORT=http` to serve MCP over Streamable
+HTTP as an always-on service instead, for a client on a different
+host/container — see "Running as an HTTP service" below.
 
 ## How it fits together
 
@@ -27,7 +30,8 @@ your inventory over Telegram.
                                 ▼
                     ┌───────────────────────┐
                     │ src/mcp/server.ts      │
-                    │ MCP server (stdio)     │
+                    │ MCP server (stdio or   │
+                    │ Streamable HTTP)       │
                     └───────────┬────────────┘
                                 ▼
                     ┌───────────────────────┐
@@ -59,6 +63,9 @@ npm run build
 | `HOMEBOX_URL` | yes | Base URL of your Homebox instance, e.g. `http://homebox:7745` |
 | `HOMEBOX_USERNAME` / `HOMEBOX_PASSWORD` | yes | Login for a Homebox account the agent uses. Create a dedicated user rather than reusing your own. |
 | `READONLY` | yes | `Y` — only read/lookup tools are registered, every create/update/delete tool is left out entirely. `N` — full read & write access. |
+| `MCP_TRANSPORT` | no | `stdio` (default) or `http` — see "Running as an HTTP service". |
+| `MCP_HTTP_HOST` / `MCP_HTTP_PORT` / `MCP_HTTP_PATH` | no | Only used when `MCP_TRANSPORT=http`. Defaults: `0.0.0.0`, `8765`, `/mcp`. |
+| `MCP_AUTH_TOKEN` | no | Only used when `MCP_TRANSPORT=http` — required in practice; see "Running as an HTTP service". |
 
 `READONLY` is enforced at the tool-registration layer: when `READONLY=Y`,
 write tools (`items_create`, `items_delete`, `locations_update`, …) are
@@ -67,7 +74,8 @@ driving it — cannot call them regardless of what it's asked to do. Toggle
 it in `.env` and restart the server to change modes.
 
 Who is allowed to *talk* to this server at all (e.g. which Telegram user)
-is not this server's concern — it's whatever spawns it that decides that.
+is not this server's concern — that's the client's decision (whatever
+spawns it over stdio, or whatever holds `MCP_AUTH_TOKEN` over HTTP).
 See `ocabra_telegram`'s `HOMEBOX_ADMIN_TELEGRAM_ID`.
 
 ## Running
@@ -77,8 +85,29 @@ npm run build
 node dist/index.js
 ```
 
-The process speaks MCP over stdio: it's meant to be spawned by a client,
-not run standalone as a network service.
+By default the process speaks MCP over stdio, meant to be spawned by a
+client rather than run standalone. Set `MCP_TRANSPORT=http` (see
+`.env.example`) to run it as an always-on HTTP service instead.
+
+### Running as an HTTP service
+
+```bash
+MCP_TRANSPORT=http MCP_AUTH_TOKEN=$(openssl rand -hex 32) node dist/index.js
+```
+
+This is the mode to use whenever the client (e.g. `ocabra_telegram`)
+doesn't run on the same host — a stdio-piped subprocess can't cross that
+boundary the way plain HTTP does. `MCP_HTTP_HOST` (default `0.0.0.0`),
+`MCP_HTTP_PORT` (default `8765`), and `MCP_HTTP_PATH` (default `/mcp`)
+control the listener; `MCP_AUTH_TOKEN` gates every request behind a
+matching `Authorization: Bearer <token>` header (constant-time compared)
+— set it unless you've deliberately decided the network path here is
+trusted on its own, since an unset token on a reachable port lets anyone
+who can reach it drive every tool this server exposes (Homebox reads, and
+writes unless `READONLY=Y`). The HTTP transport is stateless — each
+request gets a fresh `McpServer`/transport pair, no session store to
+manage, matching this being a single-admin-user tool rather than a
+multi-tenant service.
 
 ### Claude Desktop / Claude Code
 
@@ -101,30 +130,37 @@ not run standalone as a network service.
 
 ### ocabra_telegram
 
-`ocabra_telegram`'s `bot.py` spawns this server as a subprocess and drives
-it with OpenAI-style tool-calling against its Ocabra backend. Set, in
-`ocabra_telegram`'s `.env`:
+`ocabra_telegram`'s `bot.py` drives this server with OpenAI-style
+tool-calling against its Ocabra backend, over MCP's Streamable HTTP
+transport (the official `mcp` Python SDK client) — not a spawned
+subprocess, so this server can run on the same host, a different host on
+your LAN, or its own container.
 
-```
-HOMEBOX_MCP_ENABLED=true
-HOMEBOX_MCP_ENTRY=/absolute/path/to/homebox_mcp/dist/index.js
-HOMEBOX_URL=http://localhost:7745
-HOMEBOX_USERNAME=agent@example.com
-HOMEBOX_PASSWORD=change-me
-HOMEBOX_READONLY=Y
-HOMEBOX_ADMIN_TELEGRAM_ID=123456789
-```
+1. Run this server with `MCP_TRANSPORT=http` and a `MCP_AUTH_TOKEN` set
+   (see "Running as an HTTP service" above, or "Docker" below).
+2. In `ocabra_telegram`'s `.env`:
+   ```
+   HOMEBOX_MCP_ENABLED=true
+   HOMEBOX_MCP_URL=http://homebox-mcp-host:8765/mcp
+   HOMEBOX_MCP_AUTH_TOKEN=same-token-as-MCP_AUTH_TOKEN-above
+   HOMEBOX_ADMIN_TELEGRAM_ID=123456789
+   ```
+   `HOMEBOX_MCP_URL`/`HOMEBOX_MCP_AUTH_TOKEN` must match what this server
+   is actually serving (`MCP_HTTP_HOST`/`PORT`/`PATH`/`MCP_AUTH_TOKEN`
+   above) — the exact same secret goes on both sides.
 
-See that repo's README for the full list.
+See that repo's README, "Homebox Integration", for the full list.
 
 ### Docker
 
 ```bash
-docker build -t homebox-mcp .
-docker run -i --rm --env-file .env homebox-mcp
+cp .env.example .env   # fill in HOMEBOX_URL/USERNAME/PASSWORD, MCP_AUTH_TOKEN, ...
+docker compose up -d --build
 ```
 
-`-i` is required — the server reads MCP requests from stdin.
+The image runs this server with `MCP_TRANSPORT=http` and `restart:
+always`, publishing port 8765 (see `docker-compose.yml` to change it or
+bind to a specific interface).
 
 ## Tool coverage
 

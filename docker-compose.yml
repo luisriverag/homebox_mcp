@@ -1,0 +1,12 @@
+services:
+  homebox-mcp:
+    build: .
+    container_name: homebox-mcp
+    restart: always
+    env_file:
+      - .env
+    ports:
+      # Host:container. Change the host side if 8765 is taken, or bind to
+      # a specific interface (e.g. "192.168.1.16:8765:8765") to keep this
+      # off a public interface — see README.md's auth note either way.
+      - "8765:8765"
