@@ -374,10 +374,18 @@ npm run typecheck  # validate TypeScript without emitting dist/
 npm run build      # compile the production JavaScript into dist/
 ```
 
-If the compiler reports that it cannot find declarations for a dependency,
-run `npm ci` before building. Type declarations are development dependencies,
-so an install created with `--omit=dev` is suitable for running `dist/`, but
-not for compiling the TypeScript sources.
+If the compiler reports that it cannot find declarations for a dependency
+(for example, `TS7016` for `express`), restore the complete lockfile-defined
+dependency tree before building:
+
+```bash
+npm ci
+npm run build
+```
+
+Type declarations are development dependencies, so an install created with
+`--omit=dev` is suitable for running `dist/`, but not for compiling the
+TypeScript sources.
 
 There is currently no automated test suite. Before submitting a change, run
 both `npm run typecheck` and `npm run build`. Tool implementations live in
