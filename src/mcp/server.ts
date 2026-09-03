@@ -180,7 +180,7 @@ async function runHttpServer(): Promise<void> {
     // *later* listener error (EMFILE under load, etc.) would otherwise be
     // silently swallowed — always log it too, so the service doesn't keep
     // "running" with a dead listener and zero operator-visible signal.
-    server.on("error", (err) => {
+    server.on("error", (err: Error) => {
       console.error("homebox-mcp: HTTP server error:", err);
       if (!startupSettled) reject(err);
     });
