@@ -1,0 +1,127 @@
+# Tool reference
+
+homebox-mcp exposes 64 tools when `READONLY=N`. With `READONLY=Y`, only the
+tools marked **Read** below are registered; write tools are absent from MCP tool
+discovery entirely. A tool marked **Write** may create, modify, delete, upload,
+send, or run an inventory-wide action.
+
+The connected MCP client receives the full input schema and description for
+each registered tool. This page is a compact index for operators deciding what
+the server can do; the TypeScript definitions in [`src/tools`](../src/tools)
+remain the source of truth for individual parameters.
+
+## Items and attachments
+
+| Access | Tool | Purpose |
+|---|---|---|
+| Read | `items_list` | Search and filter inventory items. |
+| Read | `items_get` | Get one item's complete details. |
+| Read | `items_path` | Get an item's ancestor-location breadcrumb. |
+| Read | `items_fields` | List custom-field names in use. |
+| Read | `items_field_values` | List values used by one custom field. |
+| Read | `items_export` | Export the inventory as CSV. |
+| Write | `items_create` | Create an item. |
+| Write | `items_update` | Update item details while preserving omitted fields. |
+| Write | `items_patch` | Patch quantity, tags, parent, or entity type. |
+| Write | `items_delete` | Permanently delete an item. |
+| Write | `items_import` | Import Homebox-format CSV data. |
+| Write | `items_attachment_add` | Upload a file attachment. |
+| Write | `items_attachment_add_external` | Add an external document or URL. |
+| Read | `items_attachment_get` | Get attachment metadata. |
+| Write | `items_attachment_update` | Update attachment metadata or primary-photo status. |
+| Write | `items_attachment_delete` | Delete an attachment. |
+
+## Maintenance
+
+| Access | Tool | Purpose |
+|---|---|---|
+| Read | `items_maintenance_list` | List maintenance entries for one item. |
+| Read | `maintenance_list_all` | List maintenance entries across inventory. |
+| Write | `items_maintenance_create` | Add a maintenance entry. |
+| Write | `items_maintenance_update` | Update a maintenance entry. |
+| Write | `items_maintenance_delete` | Delete a maintenance entry. |
+
+## Locations, tags, and entity types
+
+| Access | Tool | Purpose |
+|---|---|---|
+| Read | `locations_list` | List locations as a flat collection. |
+| Read | `locations_tree` | Get the nested location tree. |
+| Read | `locations_get` | Get a location and its children. |
+| Write | `locations_create` | Create a location. |
+| Write | `locations_update` | Update or move a location. |
+| Write | `locations_delete` | Delete a location; contained items become unassigned. |
+| Read | `tags_list` | List tags. |
+| Read | `tags_get` | Get a tag and its tagged items. |
+| Write | `tags_create` | Create a tag. |
+| Write | `tags_update` | Update a tag. |
+| Write | `tags_delete` | Delete a tag and remove it from items. |
+| Read | `entity_types_list` | List item/location templates and IDs. |
+
+## Notifiers
+
+| Access | Tool | Purpose |
+|---|---|---|
+| Read | `notifiers_list` | List notifier targets. |
+| Write | `notifiers_create` | Create a notifier target. |
+| Write | `notifiers_update` | Update a notifier target. |
+| Write | `notifiers_delete` | Delete a notifier target. |
+| Write | `notifiers_test` | Send a test notification to a supplied URL. |
+
+## Users and groups
+
+| Access | Tool | Purpose |
+|---|---|---|
+| Read | `users_self_get` | Get the authenticated user's profile. |
+| Write | `users_self_update` | Update the authenticated user's profile. |
+| Write | `users_self_delete` | Permanently delete the authenticated account and its data. |
+| Write | `users_change_password` | Change the authenticated user's password. |
+| Write | `users_register` | Register a user with an invitation token. |
+| Read | `group_get` | Get group settings. |
+| Write | `group_update` | Update group settings. |
+| Write | `group_invitations_create` | Create an invitation. |
+| Read | `group_invitations_list` | List outstanding invitations. |
+| Write | `group_invitations_delete` | Revoke an invitation. |
+| Read | `group_members_list` | List group members. |
+| Write | `group_members_remove` | Remove a member from the group. |
+| Read | `group_statistics` | Get high-level inventory statistics. |
+| Read | `group_statistics_tags` | Get statistics grouped by tag. |
+| Read | `group_statistics_locations` | Get statistics grouped by location. |
+| Read | `group_statistics_purchase_price` | Get purchase-price statistics over time. |
+
+## Bulk actions
+
+These write tools operate across the inventory rather than on a single item.
+
+| Access | Tool | Purpose |
+|---|---|---|
+| Write | `actions_ensure_asset_ids` | Assign missing asset IDs. |
+| Write | `actions_ensure_import_refs` | Assign missing import references. |
+| Write | `actions_set_primary_photos` | Set first photos as primary photos. |
+| Write | `actions_zero_item_time_fields` | Reset item timestamps to the start of their day. |
+| Write | `actions_create_missing_thumbnails` | Generate missing photo thumbnails. |
+
+## Status, lookup, and reporting
+
+| Access | Tool | Purpose |
+|---|---|---|
+| Read | `status_get` | Get Homebox status, health, and version data. |
+| Read | `currency_list` | List supported currencies. |
+| Read | `assets_get_by_id` | Find an item by its numeric asset ID. |
+| Read | `qrcode_generate` | Return a QR code as base64-encoded JPEG data. |
+| Read | `reporting_bill_of_materials` | Export a bill-of-materials report as CSV. |
+
+## Typical lookup flow
+
+Most entity relationships use UUIDs rather than display names. A client can
+resolve those IDs before a write operation:
+
+1. Call `locations_tree` to find the destination location ID.
+2. Call `tags_list` to find any tag IDs.
+3. Call `entity_types_list` if a custom item or location template is needed.
+4. Call `items_create` or `items_update` with the resolved IDs.
+5. Call `items_get` to verify the resulting record.
+
+For safety, clients should retrieve the current object before destructive or
+broad changes and request explicit user confirmation before calling deletion,
+member-removal, account-deletion, import, or bulk-action tools.

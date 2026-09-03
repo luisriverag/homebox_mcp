@@ -19,6 +19,19 @@ process directly); set `MCP_TRANSPORT=http` to serve MCP over Streamable
 HTTP as an always-on service instead, for a client on a different
 host/container — see "Running as an HTTP service" below.
 
+## Contents
+
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+- [Running](#running)
+- [Client configuration](#client-configuration)
+- [Docker](#docker)
+- [Tool coverage](#tool-coverage)
+- [Security checklist](#security-checklist)
+- [Potential improvements](#potential-improvements)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+
 ## How it fits together
 
 ```
@@ -47,20 +60,53 @@ Every tool is defined once, in `src/tools/`, as
 `{ name, description, write, zod-shape, handler }`, and registered with the
 MCP server in `src/mcp/server.ts`.
 
+For request lifecycles, authentication boundaries, and extension points, see
+the [architecture guide](docs/ARCHITECTURE.md).
+
+## Prerequisites
+
+- A current [`sysadminsmedia/homebox`](https://github.com/sysadminsmedia/homebox)
+  instance that exposes the `/api/v1/entities` API. The archived
+  `hay-kot/homebox` API is not supported.
+- A dedicated Homebox account for the MCP server. Its Homebox permissions
+  still apply in addition to this server's `READONLY` setting.
+- Node.js 22 and npm for a source install, or Docker with Docker Compose for
+  the container install.
+- An MCP client. Running this process in a terminal does not provide a chat
+  interface.
+
+## Choose a transport
+
+| Situation | Transport | What the client connects to |
+|---|---|---|
+| The MCP client can spawn a local process | `stdio` (default) | `node /absolute/path/to/dist/index.js` |
+| The client is on another host or in another container | `http` | `http://<server>:8765/mcp` |
+| Docker Compose deployment | `http` (set by the image) | The published port and `MCP_HTTP_PATH` |
+
+Use stdio when possible: it needs no listening port or MCP bearer token. Use
+HTTP when the process boundary makes stdio unavailable, and set
+`MCP_AUTH_TOKEN` before exposing the listener.
+
 ## Setup
 
 ```bash
+git clone <repository-url> homebox_mcp
+cd homebox_mcp
 cp .env.example .env
-# fill in .env — see below
-npm install
+# set HOMEBOX_URL, HOMEBOX_USERNAME, and HOMEBOX_PASSWORD in .env
+npm ci
 npm run build
 ```
+
+Keep `READONLY=Y` for the first connection. After confirming the client can
+list and retrieve inventory, change it to `N` only if write operations are
+required, then restart the server.
 
 ### Environment variables (`.env`)
 
 | Variable | Required | Description |
 |---|---|---|
-| `HOMEBOX_URL` | yes | Base URL of your Homebox instance, e.g. `http://homebox:7745` |
+| `HOMEBOX_URL` | yes | Base URL of your Homebox instance, with no `/api` suffix, e.g. `http://homebox:7745` |
 | `HOMEBOX_USERNAME` / `HOMEBOX_PASSWORD` | yes | Login for a Homebox account the agent uses. Create a dedicated user rather than reusing your own. |
 | `READONLY` | yes | `Y` — only read/lookup tools are registered, every create/update/delete tool is left out entirely. `N` — full read & write access. |
 | `MCP_TRANSPORT` | no | `stdio` (default) or `http` — see "Running as an HTTP service". |
@@ -89,6 +135,10 @@ By default the process speaks MCP over stdio, meant to be spawned by a
 client rather than run standalone. Set `MCP_TRANSPORT=http` (see
 `.env.example`) to run it as an always-on HTTP service instead.
 
+The startup message is written to stderr so it does not corrupt the MCP
+protocol on stdout. In stdio mode, seeing the process wait without printing a
+prompt is expected: it is waiting for an MCP client to send protocol messages.
+
 ### Running as an HTTP service
 
 ```bash
@@ -109,6 +159,20 @@ request gets a fresh `McpServer`/transport pair, no session store to
 manage, matching this being a single-admin-user tool rather than a
 multi-tenant service.
 
+On successful startup, stderr includes the listener address, number of
+registered tools, readonly mode, and whether HTTP authentication is enabled:
+
+```text
+homebox-mcp: MCP server ready over HTTP on 0.0.0.0:8765/mcp (64 tools, READONLY=N, auth=on)
+```
+
+The `/mcp` route is an MCP endpoint, not a conventional browser page or
+health-check URL. `GET /mcp` intentionally returns `405`; connect with an MCP
+Streamable HTTP client using `POST` instead. A `401` response means the bearer
+token is absent or does not exactly match `MCP_AUTH_TOKEN`.
+
+## Client configuration
+
 ### Claude Desktop / Claude Code
 
 ```json
@@ -127,6 +191,12 @@ multi-tenant service.
   }
 }
 ```
+
+The path in `args` must be absolute because GUI clients often start with a
+different working directory. Restart the MCP client after changing its
+configuration or rebuilding the server. Environment variables configured in
+the client take precedence over relying on a project-local `.env` whose
+location may not be the client's working directory.
 
 ### ocabra_telegram
 
@@ -168,6 +238,18 @@ The image runs this server with `MCP_TRANSPORT=http` and `restart:
 always`, publishing port 8765 (see `docker-compose.yml` to change it or
 bind to a specific interface).
 
+Follow startup and tool-error logs with:
+
+```bash
+docker compose logs -f homebox-mcp
+```
+
+Inside Compose, `HOMEBOX_URL=http://homebox:7745` works only when a service
+named `homebox` is reachable on a shared Docker network. If Homebox runs on
+the Docker host or elsewhere, set `HOMEBOX_URL` to an address that is
+reachable **from the container**, not necessarily the address used by your
+browser.
+
 ## Tool coverage
 
 64 MCP tools, covering Homebox's current `/v1/entities` + `/v1/tags` API:
@@ -196,6 +278,40 @@ bind to a specific interface).
   generation, bill-of-materials report
 
 See `src/tools/*.ts` for the exact input schema of each tool.
+For a complete, browsable list of tool names and access levels, see the
+[tool reference](docs/TOOLS.md).
+
+Tool names use a `<resource>_<operation>` convention such as `items_list`,
+`items_get`, and `items_create`. Write tools are also prefixed with `[write]`
+in their MCP descriptions. With `READONLY=Y`, write tools are omitted from
+tool discovery entirely rather than being exposed and rejected later.
+
+## Security checklist
+
+Before enabling write tools or exposing the HTTP transport, verify all of the
+following:
+
+- Use a dedicated Homebox account and grant it only the permissions the client
+  needs.
+- Start with `READONLY=Y`. Changing it to `N` exposes all write tools, including
+  permanent deletion, account deletion, member removal, and inventory-wide
+  bulk actions.
+- Set a long, randomly generated `MCP_AUTH_TOKEN` for HTTP mode. Do not reuse
+  the Homebox password as this token.
+- Restrict the published port with a firewall, private network, VPN, or a
+  specific Docker bind address. The bearer token protects requests, but does
+  not encrypt traffic; use a trusted network or a TLS-terminating reverse proxy
+  when requests cross an untrusted network.
+- Do not commit `.env` or `docker-compose.yml`; both are ignored so local
+  credentials and deployment-specific settings stay out of version control.
+- Treat logs and tool results as potentially sensitive because inventory names,
+  values, attachments, and user details may be returned to the MCP client.
+
+## Potential improvements
+
+See [`docs/IDEAS.md`](docs/IDEAS.md) for a prioritized list of possible testing,
+operability, security, packaging, and tool-UX improvements. The document is a
+roadmap, not a commitment that every idea will be implemented.
 
 ### A note on Homebox API versions
 
@@ -211,9 +327,58 @@ with `curl http://<your-homebox>/api/v1/status` (always works, no auth) and
 `curl http://<your-homebox>/api/v1/entities` vs `.../api/v1/items` (with a
 valid Bearer token) to see which one responds instead of 404.
 
+## Troubleshooting
+
+### The client shows no Homebox tools
+
+1. Run `npm run build` and confirm `dist/index.js` exists.
+2. Use an absolute script path in stdio client configuration.
+3. Check the MCP client's own logs for process startup errors.
+4. Run `node dist/index.js` from the project directory to surface invalid
+   environment values. Stop it with <kbd>Ctrl</kbd>+<kbd>C</kbd> after the
+   startup message appears.
+
+### Homebox returns `401`
+
+This is authentication between this server and Homebox, not HTTP transport
+authentication. Confirm `HOMEBOX_USERNAME` and `HOMEBOX_PASSWORD`, verify the
+account can sign in to the same instance, and ensure `HOMEBOX_URL` points to
+that instance. The server refreshes an expired Homebox token automatically and
+retries one failed request.
+
+### The MCP endpoint returns `401`
+
+Send `Authorization: Bearer <token>` where `<token>` exactly matches
+`MCP_AUTH_TOKEN`. This token protects access to MCP; it is separate from the
+Homebox login and should not be set to the Homebox password.
+
+### Requests return `404`
+
+- For Homebox API calls, confirm the instance uses the current `entities` and
+  `tags` API described in [A note on Homebox API versions](#a-note-on-homebox-api-versions).
+- For MCP requests, confirm the client URL path matches `MCP_HTTP_PATH`
+  (default `/mcp`).
+
+### Write tools are missing
+
+This is expected when `READONLY=Y`. Set `READONLY=N` and restart the process
+only after reviewing the credentials and network access available to the MCP
+client.
+
 ## Development
 
 ```bash
-npm run dev        # tsx watch
-npm run typecheck
+npm ci
+npm run dev        # run src/index.ts in watch mode
+npm run typecheck  # validate TypeScript without emitting dist/
+npm run build      # compile the production JavaScript into dist/
 ```
+
+There is currently no automated test suite. Before submitting a change, run
+both `npm run typecheck` and `npm run build`. Tool implementations live in
+`src/tools/`; the shared Homebox HTTP client lives in `src/homebox/client.ts`,
+and transport registration lives in `src/mcp/server.ts`.
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the repository layout, tool
+definition conventions, validation checklist, and guidance for keeping the
+tool reference synchronized.
