@@ -132,7 +132,7 @@ export const itemTools: ToolDef<any>[] = [
   defineTool({
     name: "items_photo_get",
     description:
-      "Return an item's primary photo as native MCP image content (or its first photo when no primary is set). Use this after items_list whenever the user asks to see, show, or send a photo; do not respond with an attachment: URL from item metadata.",
+      "Return an item's primary photo as native MCP image content (or its first photo when no primary is set). Use this after items_list whenever the user asks to see, show, or send a photo. The tool result itself delivers the image: after calling it, do not create or write a Markdown ![...](attachment:...) reference, because that reference is not portable to chat bridges such as Telegram.",
     write: false,
     shape: { id },
     handler: async ({ id }) => {
@@ -154,10 +154,26 @@ export const itemTools: ToolDef<any>[] = [
       // Older Homebox versions can serve downloads as application/octet-stream
       // even though attachment metadata contains the precise image type. MCP
       // clients only render an image block when its MIME type starts with image/.
-      if (!binary.mimeType.startsWith("image/") && photo.mimeType?.startsWith("image/")) {
-        return { ...binary, mimeType: photo.mimeType };
-      }
-      return binary;
+      const image =
+        !binary.mimeType.startsWith("image/") && photo.mimeType?.startsWith("image/")
+          ? { ...binary, mimeType: photo.mimeType }
+          : binary;
+
+      // Besides helping MCP clients label the tool result, this instruction is
+      // deliberately returned alongside the bytes. Some model hosts otherwise
+      // turn an image-only tool result into an `attachment:<uuid>` Markdown URL;
+      // those host-local references cannot be resolved by bridged clients such
+      // as Telegram. The native image content block is the actual payload.
+      return {
+        kind: "tool-content",
+        value: {
+          itemId: id,
+          attachmentId: photo.id,
+          delivery:
+            "The photo is included as native image content in this tool result. Do not emit an attachment: Markdown link; acknowledge briefly without reproducing the image URL.",
+        },
+        binaries: [image],
+      } satisfies ToolContentResult;
     },
   }),
 
