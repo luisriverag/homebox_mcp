@@ -83,6 +83,18 @@ of the upstream body. The MCP wrapper logs the failure to stderr and returns an
 `isError` result to the caller. Unexpected errors follow the same MCP error
 path without exposing a stack trace as tool content.
 
+When a `HomeboxApiError` on an `/v1/entities/<id>...` path looks like an
+unknown-id error (a `404`, or a `400` whose body says `invalid route key`),
+the client makes one best-effort attempt to help the caller self-correct
+before the error reaches the MCP layer: it fetches the current entity list,
+computes the Levenshtein distance from the bad id to every real one
+(`src/homebox/similarity.ts`), and — when the closest match is within a
+distance of 8 — appends `Did you mean "<id>" ("<name>")?` to the error
+message. This targets a model retyping a UUID from memory across several
+tool calls instead of reusing it verbatim; it never changes the HTTP status
+or masks the original error, and a failed candidate lookup or no close-enough
+match just leaves the error unchanged.
+
 ## Transport lifecycles
 
 ### Stdio
@@ -217,6 +229,14 @@ transformations include:
 - Converting file input from base64 to bytes for uploads.
 - Converting binary Homebox responses to native MCP image content or embedded
   resources (with base64 used as MCP's binary wire encoding).
+- Restoring an attachment's declared image MIME type on the binary returned by
+  `items_get` (with `includeAttachments`), `items_photo_get`, and
+  `items_attachment_get` when Homebox's download response instead reports a
+  generic type such as `application/octet-stream`. The MCP layer only renders
+  a native `image` content block for a MIME type starting with `image/`, so
+  without this correction a photo would silently fall back to an embedded
+  resource block. All three tools share this behavior through a
+  `restoreImageMimeType` helper in `src/tools/items.ts`.
 
 Transformations that can affect pagination, omitted records, or field values
 should be stated in the corresponding tool description.

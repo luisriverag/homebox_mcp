@@ -184,7 +184,7 @@ On successful startup, stderr includes the listener address, number of
 registered tools, readonly mode, and whether HTTP authentication is enabled:
 
 ```text
-homebox-mcp: MCP server ready over HTTP on 0.0.0.0:8765/mcp (64 tools, READONLY=N, auth=on)
+homebox-mcp: MCP server ready over HTTP on 0.0.0.0:8765/mcp (65 tools, READONLY=N, auth=on)
 ```
 
 The `/mcp` route is an MCP endpoint, not a conventional browser page or
@@ -313,6 +313,15 @@ For a complete, browsable list of tool names and access levels, see the
 photos use MCP image content so capable clients can display them, while PDFs
 and other documents use embedded MCP resource content. Use the attachment IDs
 included in an `items_get` response to request a particular file.
+
+Homebox's download endpoint sometimes serves a photo as generic
+`application/octet-stream` even though the attachment's own metadata records
+an `image/*` MIME type. Since MCP clients only render a native `image`
+content block when the type starts with `image/`, `items_get` (with
+`includeAttachments`), `items_photo_get`, and `items_attachment_get` all
+restore the attachment's declared image MIME type on the binary they return
+before it reaches resultToContent, so a photo still displays as an image
+instead of silently falling back to an embedded resource block.
 
 For the common “show/send me a photo” workflow, call `items_photo_get` with the
 item ID. It selects the primary photo (or the first photo if none is primary)

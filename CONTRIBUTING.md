@@ -31,10 +31,15 @@ developing unless the change specifically requires writes.
 | `src/index.ts` | Process entry point and fatal startup error handling. |
 | `src/config.ts` | Environment parsing, defaults, and required credential checks. |
 | `src/mcp/server.ts` | Tool registration plus stdio and Streamable HTTP transports. |
-| `src/homebox/client.ts` | Homebox login, token refresh, request serialization, and response parsing. |
+| `src/homebox/client.ts` | Homebox login, token refresh, request serialization, and response parsing, including the entity-id-suggestion enrichment on unknown-id errors. |
+| `src/homebox/similarity.ts` | Levenshtein-distance matching used to suggest the correct entity id after a `404`/`400 invalid route key`. |
 | `src/homebox/entityMerge.ts` | Preserving existing fields for full entity updates. |
 | `src/homebox/entityTypes.ts` | Resolving default and custom entity type IDs. |
+| `src/homebox/search.ts` | Alternate-name query expansion and related-tag resolution for `items_list`. |
+| `src/homebox/deepSearch.ts` | Exhaustive `items_list` `deepSearch` over full item details. |
+| `src/logger.ts` | `logActivity()`, the shared stderr activity-log writer. |
 | `src/tools/types.ts` | Shared `ToolDef`, `defineTool`, and safe path-ID schema. |
+| `src/tools/index.ts` | Combines every resource module's tools into `allTools` and applies `READONLY` filtering. |
 | `src/tools/*.ts` | MCP tool definitions grouped by Homebox resource area. |
 | `docs/TOOLS.md` | Operator-facing index of registered tools and access levels. |
 | `docs/IDEAS.md` | Non-binding roadmap and design questions. |

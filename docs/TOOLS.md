@@ -1,6 +1,6 @@
 # Tool reference
 
-homebox-mcp exposes 64 tools when `READONLY=N`. With `READONLY=Y`, only the
+homebox-mcp exposes 65 tools when `READONLY=N`. With `READONLY=Y`, only the
 tools marked **Read** below are registered; write tools are absent from MCP tool
 discovery entirely. A tool marked **Write** may create, modify, delete, upload,
 send, or run an inventory-wide action.
@@ -28,9 +28,16 @@ remain the source of truth for individual parameters.
 | Write | `items_import` | Import Homebox-format CSV data. |
 | Write | `items_attachment_add` | Upload a file attachment. |
 | Write | `items_attachment_add_external` | Add an external document or URL. |
-| Read | `items_attachment_get` | Return a photo as MCP image content or a document as an embedded MCP resource. |
+| Read | `items_attachment_get` | Return a photo as MCP image content (MIME-corrected) or a document as an embedded MCP resource. |
 | Write | `items_attachment_update` | Update attachment metadata or primary-photo status. |
 | Write | `items_attachment_delete` | Delete an attachment. |
+
+`items_get` (with `includeAttachments`), `items_photo_get`, and
+`items_attachment_get` share a `restoreImageMimeType` helper
+(`src/tools/items.ts`) that restores an attachment's declared image MIME type
+on the binary they return whenever Homebox's own download response reports a
+generic type instead — otherwise the MCP client falls back to an embedded
+resource block instead of a native photo.
 
 ### `items_list` search inputs
 
@@ -163,3 +170,8 @@ resolve those IDs before a write operation:
 For safety, clients should retrieve the current object before destructive or
 broad changes and request explicit user confirmation before calling deletion,
 member-removal, account-deletion, import, or bulk-action tools.
+
+If a call instead references an entity id that no longer exists (or was
+mistyped/fabricated while being reused across calls), the resulting error
+names the closest real id when one is a confident-enough match — see
+[Requests return `404`](../README.md#requests-return-404) in the README.
