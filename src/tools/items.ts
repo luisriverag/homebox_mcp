@@ -2,7 +2,7 @@ import { z } from "zod";
 import { homebox } from "../homebox/client.js";
 import { resolveEntityTypeId } from "../homebox/entityTypes.js";
 import { entityUpdateBodyFromCurrent, type EntityOut } from "../homebox/entityMerge.js";
-import { buildSearchTerms, mergeEntitySearchResults } from "../homebox/search.js";
+import { buildSearchTerms, findRelevantTags, mergeEntitySearchResults } from "../homebox/search.js";
 import { defineTool, safeId, type ToolDef } from "./types.js";
 
 const id = safeId.describe("Homebox entity (item) UUID");
@@ -11,7 +11,7 @@ export const itemTools: ToolDef<any>[] = [
   defineTool({
     name: "items_list",
     description:
-      "List/search items in the Homebox inventory. For a text search, always include English and Spanish translations plus singular/plural forms, synonyms, abbreviations, and alternate names in alternateNames; do not merely translate the original term. The tool runs every variation and combines unique results. Common names such as bike/bicycle/bici/bicicleta are expanded automatically, including inside phrases. Supports filtering by tag or parent item/location ID (there's no direct \"only show items in location X\" filter — use parentIds with that location's ID, or items_get/locations_get to see an entity's direct children). Homebox's search endpoint returns items and locations/containers mixed together (there's no server-side type filter); this tool drops results that are themselves locations, so a page may come back with fewer than pageSize items per search variation — use locations_list/locations_tree to browse locations specifically.",
+      "List/search items in the Homebox inventory. Before searching, use tags_list to discover inventory-specific tags that may express the user's meaning, then pass their IDs in relatedTagIds (for example, a motorbike request may match a Motorcycle tag). Related tags are searched independently from item text so tagged items are not missed. tagNames is also available when only names are known. Include translations, singular/plural forms, synonyms, abbreviations, and alternate names in alternateNames. The tool combines all unique results. The tags parameter is a strict filter rather than an additional discovery search. Supports filtering by parent item/location ID (there's no direct \"only show items in location X\" filter — use parentIds with that location's ID, or items_get/locations_get to see an entity's direct children). Homebox's search endpoint returns items and locations/containers mixed together (there's no server-side type filter); this tool drops results that are themselves locations, so a page may come back with fewer than pageSize items per search variation — use locations_list/locations_tree to browse locations specifically.",
     write: false,
     shape: {
       q: z.string().optional().describe("The user's original free-text search string"),
@@ -22,17 +22,42 @@ export const itemTools: ToolDef<any>[] = [
         .describe(
           "English/Spanish translations, singular/plural forms, synonyms, abbreviations, and other names for q",
         ),
+      tagNames: z
+        .array(z.string().min(1))
+        .max(12)
+        .optional()
+        .describe("Relevant tag names discovered with tags_list; these are searched in addition to q"),
+      relatedTagIds: z
+        .array(safeId)
+        .max(12)
+        .optional()
+        .describe("Relevant tag IDs discovered with tags_list; searched independently in addition to q"),
       page: z.number().int().min(1).optional(),
       pageSize: z.number().int().min(1).max(200).optional(),
       tags: z.array(z.string()).optional().describe("Filter by tag IDs"),
       parentIds: z.array(z.string()).optional().describe("Filter by parent item/location IDs"),
     },
-    handler: async ({ alternateNames, ...args }: any) => {
+    handler: async ({ alternateNames, tagNames = [], relatedTagIds = [], ...args }: any) => {
       const searchTerms = args.q ? buildSearchTerms(args.q, alternateNames) : [];
-      const results = searchTerms.length
-        ? await Promise.all(searchTerms.map((q) => homebox.get("/v1/entities", { ...args, q })))
+      let relevantTags: Array<{ id: string; name: string }> = [];
+      if ((tagNames.length || (!relatedTagIds.length && searchTerms.length)) && !args.tags?.length) {
+        const tagCandidates = relatedTagIds.length ? tagNames : [...searchTerms, ...tagNames];
+        relevantTags = findRelevantTags(await homebox.get("/v1/tags"), tagCandidates);
+      }
+      const searchedTagIds = args.tags?.length
+        ? []
+        : [...new Set<string>([...relatedTagIds, ...relevantTags.map((tag) => tag.id)])];
+      const textSearches = searchTerms.map((q) => homebox.get("/v1/entities", { ...args, q }));
+      const { q: _q, tags: _tags, ...tagSearchArgs } = args;
+      const tagSearches = searchedTagIds.map((tagId) =>
+        homebox.get("/v1/entities", { ...tagSearchArgs, tags: [tagId] }),
+      );
+      const results = searchTerms.length || searchedTagIds.length
+        ? await Promise.all([...textSearches, ...tagSearches])
         : [await homebox.get("/v1/entities", args)];
       const result: any = mergeEntitySearchResults(results, searchTerms);
+      result.matchedTags = relevantTags;
+      result.searchedTagIds = searchedTagIds;
       result.items = result.items.filter((entity: EntityOut) => !entity.entityType?.isLocation);
       return result;
     },

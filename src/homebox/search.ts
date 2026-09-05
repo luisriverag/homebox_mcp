@@ -11,8 +11,17 @@ const ALIAS_GROUPS = [
   ["television", "tv", "televisor", "televisión"],
 ] as const;
 
+export interface SearchTag {
+  id?: unknown;
+  name?: unknown;
+}
+
 function normalized(value: string): string {
   return value.trim().toLocaleLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
+}
+
+function words(value: string): string[] {
+  return normalized(value).split(/[^\p{Letter}\p{Number}]+/u).filter(Boolean);
 }
 
 function replaceStandaloneTerm(value: string, term: string, replacement: string): string | undefined {
@@ -68,6 +77,39 @@ export function buildSearchTerms(query: string, alternateNames: string[] = []): 
   }
 
   return terms;
+}
+
+/**
+ * Find tags whose complete name occurs in one of the expanded search terms.
+ * Matching whole words avoids treating short tag names as arbitrary substrings
+ * (for example, an "art" tag must not match "cart").
+ */
+export function findRelevantTags(tagsResponse: unknown, searchTerms: string[]): Array<{ id: string; name: string }> {
+  const response = tagsResponse as { items?: unknown };
+  const tags = Array.isArray(tagsResponse)
+    ? tagsResponse
+    : Array.isArray(response?.items)
+      ? response.items
+      : [];
+  const termWords = searchTerms.map(words);
+  const relevant: Array<{ id: string; name: string }> = [];
+  const seen = new Set<string>();
+
+  for (const candidate of tags as SearchTag[]) {
+    if (typeof candidate?.id !== "string" || typeof candidate?.name !== "string") continue;
+    const tagWords = words(candidate.name);
+    if (!tagWords.length) continue;
+    const matches = termWords.some((term) =>
+      term.some((_, index) =>
+        term.slice(index, index + tagWords.length).every((word, offset) => word === tagWords[offset]),
+      ),
+    );
+    if (matches && !seen.has(candidate.id)) {
+      seen.add(candidate.id);
+      relevant.push({ id: candidate.id, name: candidate.name });
+    }
+  }
+  return relevant;
 }
 
 /** Combine Homebox result pages without returning the same entity twice. */
