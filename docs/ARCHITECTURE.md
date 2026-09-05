@@ -174,6 +174,9 @@ transformations include:
   `items_list`.
 - Expanding item searches across English/Spanish alternate names and merging
   the result pages by entity ID.
+- Resolving discovered tag names, running additive related-tag searches
+  independently from free text, and reporting the tag IDs used. Explicit
+  `tags` remain a strict filter and disable additive tag searches.
 - Flattening or traversing entity trees for location-oriented tools.
 - Merging the current resource into full-update bodies so omitted fields are
   preserved rather than reset.

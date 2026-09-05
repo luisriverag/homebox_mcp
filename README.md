@@ -262,8 +262,8 @@ browser.
 
 - **Items** — list/search, get, create, update, patch, delete, breadcrumb
   path, custom fields, CSV import/export, attachments (add/get/update/
-  delete, plus external/link attachments), bilingual English/Spanish search
-  with alternate names, maintenance log (list/create/
+  delete, plus external/link attachments), multilingual alternate-name and
+  inventory-tag search, maintenance log (list/create/
   update/delete, plus an all-items maintenance query)
 - **Locations** — list, tree, get, create, update, delete. Homebox has no
   separate "locations" resource anymore — a location is an entity whose
@@ -292,6 +292,30 @@ Tool names use a `<resource>_<operation>` convention such as `items_list`,
 `items_get`, and `items_create`. Write tools are also prefixed with `[write]`
 in their MCP descriptions. With `READONLY=Y`, write tools are omitted from
 tool discovery entirely rather than being exposed and rejected later.
+
+### Finding items by meaning and tags
+
+Homebox's free-text entity search does not reliably find an item merely because
+it has a semantically related tag. For complete natural-language searches, use
+this two-step flow:
+
+1. Call `tags_list` and compare the available tag names with the user's intent.
+   This is semantic discovery performed by the MCP client, so it works with
+   inventory-specific vocabulary rather than a fixed synonym table.
+2. Call `items_list` with the original text in `q` and the IDs of all relevant
+   tags in `relatedTagIds`. For example, a search for “motorbike” can include
+   the ID of a tag named `Motorcycle`.
+
+`items_list` runs each related tag as an additional search and unions those
+results with all text/alternate-name results. This is intentionally different
+from `tags`, which is a strict filter applied to text searches. Use
+`relatedTagIds` to broaden recall; use `tags` when the user explicitly asks to
+limit results to particular tags. If only tag names are available, pass them in
+`tagNames` and the server will resolve them first.
+
+The response includes `searchTerms`, `matchedTags`, and `searchedTagIds` so an
+MCP client can explain which expansions and tags contributed to the results.
+Duplicate entities found through multiple routes are returned only once.
 
 ## Security checklist
 

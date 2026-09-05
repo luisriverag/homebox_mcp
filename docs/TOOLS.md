@@ -14,7 +14,7 @@ remain the source of truth for individual parameters.
 
 | Access | Tool | Purpose |
 |---|---|---|
-| Read | `items_list` | Search every supplied English/Spanish alternate name and combine unique inventory items. |
+| Read | `items_list` | Search every supplied alternate name and discovered related-tag ID, then combine unique inventory items. |
 | Read | `items_get` | Get one item's complete details. |
 | Read | `items_path` | Get an item's ancestor-location breadcrumb. |
 | Read | `items_fields` | List custom-field names in use. |
@@ -30,6 +30,35 @@ remain the source of truth for individual parameters.
 | Read | `items_attachment_get` | Get attachment metadata. |
 | Write | `items_attachment_update` | Update attachment metadata or primary-photo status. |
 | Write | `items_attachment_delete` | Delete an attachment. |
+
+### `items_list` search inputs
+
+| Input | Behavior |
+|---|---|
+| `q` | The user's original free-text query. |
+| `alternateNames` | Additional translations, singular/plural forms, synonyms, and abbreviations. Each is searched independently. |
+| `relatedTagIds` | Tag IDs selected semantically from `tags_list`. Each tag is searched independently and its results are added to the text results. This is the preferred tag-discovery input. |
+| `tagNames` | Relevant tag names when IDs are unavailable. The server resolves complete tag names case- and accent-insensitively, then performs the same additive searches. |
+| `tags` | A strict Homebox tag filter. Unlike `relatedTagIds`, this narrows text searches and disables additive tag searches. |
+| `parentIds` | Restricts searches to the supplied parent item/location IDs. |
+
+For a request such as “find all my motorbike things,” a client should first
+call `tags_list`. If the inventory contains a `Motorcycle` tag, call
+`items_list` with approximately:
+
+```json
+{
+  "q": "motorbike",
+  "alternateNames": ["motorcycle", "moto", "motocicleta"],
+  "relatedTagIds": ["the-motorcycle-tag-id"]
+}
+```
+
+The returned `items` are deduplicated across all searches. `searchTerms` shows
+the text queries attempted, `searchedTagIds` shows all additive tag IDs used,
+and `matchedTags` contains the tag records resolved from `tagNames` (or from
+literal tag names found in the text terms). Pagination options are sent to each
+individual Homebox search, so the merged result count can exceed `pageSize`.
 
 ## Maintenance
 
@@ -51,7 +80,7 @@ remain the source of truth for individual parameters.
 | Write | `locations_create` | Create a location. |
 | Write | `locations_update` | Update or move a location. |
 | Write | `locations_delete` | Delete a location; contained items become unassigned. |
-| Read | `tags_list` | List tags. |
+| Read | `tags_list` | List tags for browsing and semantic discovery before an item search. |
 | Read | `tags_get` | Get a tag and its tagged items. |
 | Write | `tags_create` | Create a tag. |
 | Write | `tags_update` | Update a tag. |

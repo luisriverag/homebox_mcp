@@ -7,7 +7,8 @@ const id = safeId.describe("Homebox tag UUID");
 export const tagTools: ToolDef<any>[] = [
   defineTool({
     name: "tags_list",
-    description: "List all tags (called \"Labels\" in older Homebox versions) used to categorize items.",
+    description:
+      "List all tags (called \"Labels\" in older Homebox versions). Use this for semantic tag discovery before items_list: identify tags related to the user's request, even when the wording differs, and pass their IDs to items_list.relatedTagIds.",
     write: false,
     shape: {},
     handler: () => homebox.get("/v1/tags"),
