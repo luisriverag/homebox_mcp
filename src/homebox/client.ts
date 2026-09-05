@@ -1,5 +1,6 @@
 import { config, assertHomeboxConfigured } from "../config.js";
 import { logActivity } from "../logger.js";
+import { findClosestId, type IdCandidate } from "./similarity.js";
 
 export class HomeboxApiError extends Error {
   constructor(
@@ -19,6 +20,15 @@ export class HomeboxApiError extends Error {
       return String(body);
     }
   }
+}
+
+const ENTITY_ID_PATH_RE = /^\/v1\/entities\/([^/]+)/;
+
+function looksLikeUnknownEntityId(status: number, body: unknown): boolean {
+  if (status === 404) return true;
+  if (status !== 400) return false;
+  const message = typeof body === "string" ? body : JSON.stringify(body ?? "");
+  return /invalid route key/i.test(message);
 }
 
 export type Query = Record<string, string | number | boolean | string[] | undefined>;
@@ -126,6 +136,39 @@ export class HomeboxClient {
     return this.token.token;
   }
 
+  /**
+   * On a "no such entity" error against /v1/entities/<id>..., check whether
+   * <id> is just a near-miss of a real one -- an LLM caller occasionally
+   * corrupts a character or two of a UUID when reusing it across several
+   * tool calls instead of copying it verbatim -- and if so, name the
+   * correct id in the error so the model can fix it on its very next call
+   * instead of retrying blindly. Best-effort: any failure fetching the
+   * candidate list, or no close-enough match, just returns the original
+   * error unchanged.
+   */
+  private async enrichUnknownEntityIdError(err: HomeboxApiError): Promise<HomeboxApiError> {
+    const badId = ENTITY_ID_PATH_RE.exec(err.path)?.[1];
+    if (!badId || !looksLikeUnknownEntityId(err.status, err.body)) return err;
+
+    let candidates: IdCandidate[];
+    try {
+      const response = await this.get<{ items?: unknown } | unknown[]>("/v1/entities");
+      const items = Array.isArray(response) ? response : Array.isArray((response as any)?.items) ? (response as any).items : [];
+      candidates = items
+        .filter((item: any) => typeof item?.id === "string")
+        .map((item: any) => ({ id: item.id, name: typeof item.name === "string" ? item.name : undefined }));
+    } catch {
+      return err; // suggestion is best-effort; never let it mask the real error
+    }
+
+    const suggestion = findClosestId(badId, candidates);
+    if (!suggestion) return err;
+
+    const label = suggestion.name ? `"${suggestion.id}" ("${suggestion.name}")` : `"${suggestion.id}"`;
+    err.message += ` -- no entity with id "${badId}" exists. Did you mean ${label}? Use the exact id from items_list/items_get, character-for-character; don't retype it from memory.`;
+    return err;
+  }
+
   private buildUrl(path: string, query?: Query): string {
     const url = new URL(`${this.baseUrl}/api${path}`);
     if (query) {
@@ -196,12 +239,16 @@ export class HomeboxClient {
 
       if (options.raw) {
         const text = await res.text();
-        if (!res.ok) throw new HomeboxApiError(res.status, path, text);
+        if (!res.ok) throw await this.enrichUnknownEntityIdError(new HomeboxApiError(res.status, path, text));
         return text as unknown as T;
       }
 
       if (options.binary) {
-        if (!res.ok) throw new HomeboxApiError(res.status, path, await res.text());
+        if (!res.ok) {
+          throw await this.enrichUnknownEntityIdError(
+            new HomeboxApiError(res.status, path, await res.text()),
+          );
+        }
         const buf = Buffer.from(await res.arrayBuffer());
         return {
           kind: "binary",
@@ -217,7 +264,7 @@ export class HomeboxClient {
         : await res.text();
 
       if (!res.ok) {
-        throw new HomeboxApiError(res.status, path, data);
+        throw await this.enrichUnknownEntityIdError(new HomeboxApiError(res.status, path, data));
       }
       return data as T;
     };

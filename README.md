@@ -416,6 +416,16 @@ Homebox login and should not be set to the Homebox password.
   `tags` API described in [A note on Homebox API versions](#a-note-on-homebox-api-versions).
 - For MCP requests, confirm the client URL path matches `MCP_HTTP_PATH`
   (default `/mcp`).
+- A `404`/`400 invalid route key` specifically on `/v1/entities/<id>...` from
+  a tool call (`items_get`, `items_photo_get`, `items_attachment_get`, ...) is
+  usually the model mistyping or fabricating a UUID it retyped from memory
+  across several tool calls instead of reusing one verbatim. The client
+  detects this, fuzzy-matches the bad id against the real entity list, and
+  appends `Did you mean "<id>" ("<name>")?` to the error when a close match
+  exists, so the model self-corrects on its next call instead of retrying
+  blindly (see `src/homebox/similarity.ts`). If the error instead says no
+  close match was found, it's likely a genuinely wrong/deleted id rather
+  than a typo.
 
 ### Write tools are missing
 
