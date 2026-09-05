@@ -8,6 +8,22 @@ import { defineTool, safeId, type ToolContentResult, type ToolDef } from "./type
 
 const id = safeId.describe("Homebox entity (item) UUID");
 
+/**
+ * Homebox can serve an attachment download as application/octet-stream even
+ * when the attachment's own metadata records a precise image MIME type. MCP
+ * clients only render a native `image` content block when its MIME type
+ * starts with `image/`; otherwise resultToContent falls back to an embedded
+ * `resource` block, which chat bridges such as Telegram cannot render as a
+ * photo. Restore the declared type whenever the download's own type isn't
+ * already an image/* one.
+ */
+function restoreImageMimeType(binary: BinaryResponse, declaredMimeType?: string): BinaryResponse {
+  if (!binary.mimeType.startsWith("image/") && declaredMimeType?.startsWith("image/")) {
+    return { ...binary, mimeType: declaredMimeType };
+  }
+  return binary;
+}
+
 export const itemTools: ToolDef<any>[] = [
   defineTool({
     name: "items_list",
@@ -119,11 +135,14 @@ export const itemTools: ToolDef<any>[] = [
         return true;
       });
       const binaries = await Promise.all(
-        attachments.map((attachment) =>
-          homebox.request<BinaryResponse>("GET", `/v1/entities/${id}/attachments/${attachment.id}`, {
-            binary: true,
-          }),
-        ),
+        attachments.map(async (attachment) => {
+          const binary = await homebox.request<BinaryResponse>(
+            "GET",
+            `/v1/entities/${id}/attachments/${attachment.id}`,
+            { binary: true },
+          );
+          return restoreImageMimeType(binary, attachment.mimeType);
+        }),
       );
       return { kind: "tool-content", value: item, binaries } satisfies ToolContentResult;
     },
@@ -150,14 +169,7 @@ export const itemTools: ToolDef<any>[] = [
         `/v1/entities/${id}/attachments/${photo.id}`,
         { binary: true },
       );
-
-      // Older Homebox versions can serve downloads as application/octet-stream
-      // even though attachment metadata contains the precise image type. MCP
-      // clients only render an image block when its MIME type starts with image/.
-      const image =
-        !binary.mimeType.startsWith("image/") && photo.mimeType?.startsWith("image/")
-          ? { ...binary, mimeType: photo.mimeType }
-          : binary;
+      const image = restoreImageMimeType(binary, photo.mimeType);
 
       // Besides helping MCP clients label the tool result, this instruction is
       // deliberately returned alongside the bytes. Some model hosts otherwise
@@ -371,8 +383,16 @@ export const itemTools: ToolDef<any>[] = [
       "Return an item's attachment contents. Photos are returned as MCP image content; manuals, receipts, warranties, and other documents are returned as embedded MCP resources.",
     write: false,
     shape: { id, attachmentId: safeId },
-    handler: ({ id, attachmentId }) =>
-      homebox.request("GET", `/v1/entities/${id}/attachments/${attachmentId}`, { binary: true }),
+    handler: async ({ id, attachmentId }) => {
+      const item = await homebox.get<EntityOut>(`/v1/entities/${id}`);
+      const attachment = (item.attachments ?? []).find((entry) => entry.id === attachmentId);
+      const binary = await homebox.request<BinaryResponse>(
+        "GET",
+        `/v1/entities/${id}/attachments/${attachmentId}`,
+        { binary: true },
+      );
+      return restoreImageMimeType(binary, attachment?.mimeType);
+    },
   }),
 
   defineTool({
