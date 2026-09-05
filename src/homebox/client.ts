@@ -1,4 +1,5 @@
 import { config, assertHomeboxConfigured } from "../config.js";
+import { logActivity } from "../logger.js";
 
 export class HomeboxApiError extends Error {
   constructor(
@@ -54,6 +55,8 @@ export class HomeboxClient {
 
   private async login(): Promise<StoredToken> {
     assertHomeboxConfigured();
+    const startedAt = Date.now();
+    logActivity("Homebox authentication started", { homebox: this.baseUrl });
     const res = await fetch(`${this.baseUrl}/api/v1/users/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -65,6 +68,10 @@ export class HomeboxClient {
     });
     const data: any = await res.json().catch(() => ({}));
     if (!res.ok) {
+      logActivity("Homebox authentication failed", {
+        status: res.status,
+        durationMs: Date.now() - startedAt,
+      });
       throw new HomeboxApiError(res.status, "/v1/users/login", data);
     }
     // Homebox's login response already returns the token prefixed with
@@ -80,6 +87,10 @@ export class HomeboxClient {
     }
     const parsedExpiresAt = data.expiresAt ? Date.parse(data.expiresAt) : NaN;
     const expiresAt = Number.isFinite(parsedExpiresAt) ? parsedExpiresAt : Date.now() + 1000 * 60 * 60 * 12;
+    logActivity("Homebox authentication completed", {
+      status: res.status,
+      durationMs: Date.now() - startedAt,
+    });
     return { token: rawToken, expiresAt };
   }
 
@@ -133,9 +144,29 @@ export class HomeboxClient {
         body = JSON.stringify(options.body);
       }
 
-      const res = await fetch(this.buildUrl(path, options.query), { method, headers, body });
+      const startedAt = Date.now();
+      logActivity("Homebox API request started", { method, path });
+      let res: Response;
+      try {
+        res = await fetch(this.buildUrl(path, options.query), { method, headers, body });
+      } catch (err) {
+        logActivity("Homebox API request failed", {
+          method,
+          path,
+          durationMs: Date.now() - startedAt,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
+      logActivity("Homebox API request completed", {
+        method,
+        path,
+        status: res.status,
+        durationMs: Date.now() - startedAt,
+      });
 
       if (res.status === 401 && retryOnAuthFailure) {
+        logActivity("Homebox token rejected; refreshing and retrying", { method, path });
         this.token = null;
         return attempt(false);
       }

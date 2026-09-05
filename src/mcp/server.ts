@@ -7,6 +7,7 @@ import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js
 import { config } from "../config.js";
 import { activeTools } from "../tools/index.js";
 import { HomeboxApiError } from "../homebox/client.js";
+import { logActivity } from "../logger.js";
 
 // Keep the few Express-facing annotations structural. Express is only used
 // indirectly through createMcpExpressApp(), and importing its DefinitelyTyped
@@ -51,8 +52,14 @@ export function buildServer(): McpServer {
         inputSchema: tool.shape,
       },
       async (args: any) => {
+        const startedAt = Date.now();
+        logActivity("tool call started", { tool: tool.name, write: tool.write });
         try {
           const result = await tool.handler(args);
+          logActivity("tool call completed", {
+            tool: tool.name,
+            durationMs: Date.now() - startedAt,
+          });
           return { content: resultToContent(result) };
         } catch (err) {
           const message =
@@ -66,7 +73,11 @@ export function buildServer(): McpServer {
           // without logging it here explicitly, a failing tool call is
           // invisible server-side, only ever seen as whatever the
           // client's model paraphrases it into for the end user.
-          console.error(`homebox-mcp: tool ${tool.name} failed:`, message);
+          logActivity("tool call failed", {
+            tool: tool.name,
+            durationMs: Date.now() - startedAt,
+            error: message,
+          });
           return { content: [{ type: "text" as const, text: `Error: ${message}` }], isError: true };
         }
       },
@@ -85,9 +96,11 @@ export async function runMcpServer(): Promise<void> {
   const server = buildServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(
-    `homebox-mcp: MCP server ready over stdio (${activeTools().length} tools, READONLY=${config.readonly ? "Y" : "N"})`,
-  );
+  logActivity("MCP server ready", {
+    transport: "stdio",
+    tools: activeTools().length,
+    readonly: config.readonly,
+  });
 }
 
 /** Constant-time string compare that tolerates differing lengths (Node's
@@ -125,6 +138,11 @@ async function runHttpServer(): Promise<void> {
     }
     const provided = req.header("authorization") ?? "";
     if (!safeEqual(provided, `Bearer ${authToken}`)) {
+      logActivity("MCP request rejected", {
+        method: req.method,
+        path: httpPath,
+        status: 401,
+      });
       res.status(401).json({ error: "unauthorized" });
       return;
     }
@@ -135,6 +153,16 @@ async function runHttpServer(): Promise<void> {
   // to manage — this is a single-admin-user tool, not a multi-tenant
   // service, so there's nothing sessions would buy here.
   app.post(httpPath, async (req: HttpRequest, res: HttpResponse) => {
+    const startedAt = Date.now();
+    logActivity("MCP request received", { method: req.method, path: httpPath });
+    res.on("finish", () => {
+      logActivity("MCP request completed", {
+        method: req.method,
+        path: httpPath,
+        status: res.statusCode,
+        durationMs: Date.now() - startedAt,
+      });
+    });
     let server: McpServer | undefined;
     let transport: StreamableHTTPServerTransport | undefined;
     let cleanedUp = false;
@@ -184,11 +212,13 @@ async function runHttpServer(): Promise<void> {
   let startupSettled = false;
   await new Promise<void>((resolve, reject) => {
     const server = app.listen(httpPort, httpHost, () => {
-      console.error(
-        `homebox-mcp: MCP server ready over HTTP on ${httpHost}:${httpPort}${httpPath} ` +
-          `(${activeTools().length} tools, READONLY=${config.readonly ? "Y" : "N"}, ` +
-          `auth=${authToken ? "on" : "OFF"})`,
-      );
+      logActivity("MCP server ready", {
+        transport: "http",
+        address: `${httpHost}:${httpPort}${httpPath}`,
+        tools: activeTools().length,
+        readonly: config.readonly,
+        auth: authToken ? "on" : "off",
+      });
       startupSettled = true;
       resolve();
     });
