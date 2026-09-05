@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { BinaryResponse } from "../homebox/client.js";
 
 /**
  * A Homebox resource ID as it appears in a URL path segment (UUID, or an
@@ -20,6 +21,19 @@ export interface ToolDef<Shape extends z.ZodRawShape = z.ZodRawShape> {
   /** Zod raw shape describing the input arguments. */
   shape: Shape;
   handler: (args: z.infer<z.ZodObject<Shape>>) => Promise<unknown>;
+}
+
+/** A JSON result accompanied by binary MCP content blocks. */
+export interface ToolContentResult {
+  kind: "tool-content";
+  value: unknown;
+  binaries: BinaryResponse[];
+}
+
+export function isToolContentResult(value: unknown): value is ToolContentResult {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Partial<ToolContentResult>;
+  return candidate.kind === "tool-content" && Array.isArray(candidate.binaries);
 }
 
 export function defineTool<Shape extends z.ZodRawShape>(def: ToolDef<Shape>): ToolDef<Shape> {

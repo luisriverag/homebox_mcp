@@ -1,4 +1,5 @@
 export interface EntityOut {
+  id?: string;
   archived?: boolean;
   assetId?: string;
   description?: string;
@@ -24,6 +25,12 @@ export interface EntityOut {
   warrantyDetails?: string;
   warrantyExpires?: string;
   entityType?: { id?: string; isLocation?: boolean };
+  attachments?: Array<{
+    id: string;
+    mimeType?: string;
+    title?: string;
+    type?: string;
+  }>;
 }
 
 /**

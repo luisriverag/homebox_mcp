@@ -261,7 +261,7 @@ browser.
 64 MCP tools, covering Homebox's current `/v1/entities` + `/v1/tags` API:
 
 - **Items** — list/search, get, create, update, patch, delete, breadcrumb
-  path, custom fields, CSV import/export, attachments (add/get/update/
+  path, custom fields, CSV import/export, attachments (add/download/update/
   delete, plus external/link attachments), multilingual alternate-name and
   inventory-tag search, maintenance log (list/create/
   update/delete, plus an all-items maintenance query)
@@ -287,6 +287,16 @@ browser.
 See `src/tools/*.ts` for the exact input schema of each tool.
 For a complete, browsable list of tool names and access levels, see the
 [tool reference](docs/TOOLS.md).
+
+`items_attachment_get` returns attachment bytes directly in the MCP response:
+photos use MCP image content so capable clients can display them, while PDFs
+and other documents use embedded MCP resource content. Use the attachment IDs
+included in an `items_get` response to request a particular file.
+
+For a single-call alternative, pass `includeAttachments` to `items_get` with
+`photos`, `documents`, or `all`. The response retains the item's JSON details
+and appends each selected attachment as native MCP content. Omit the option to
+avoid downloading attachment bytes.
 
 Tool names use a `<resource>_<operation>` convention such as `items_list`,
 `items_get`, and `items_create`. Write tools are also prefixed with `[write]`
@@ -316,6 +326,15 @@ limit results to particular tags. If only tag names are available, pass them in
 The response includes `searchTerms`, `matchedTags`, and `searchedTagIds` so an
 MCP client can explain which expansions and tags contributed to the results.
 Duplicate entities found through multiple routes are returned only once.
+
+For fields that Homebox's normal text endpoint does not index, `items_list`
+also offers an opt-in `deepSearch`. It can search every scalar item value or
+apply structured filters to fields such as `purchaseFrom`, `purchasePrice`,
+sale and warranty values, dotted paths, and named custom fields. Deep search
+reads every candidate item's complete details, so reserve it for queries that
+cannot be answered by the faster normal text and tag search. Numeric comparison
+operators also work with ISO dates, `includeArchived` expands the scan to
+archived items, and the result's `scanned` count reports its scope.
 
 ## Security checklist
 
