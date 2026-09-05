@@ -238,11 +238,17 @@ The image runs this server with `MCP_TRANSPORT=http` and `restart:
 always`, publishing port 8765 (see `docker-compose.yml` to change it or
 bind to a specific interface).
 
-Follow startup and tool-error logs with:
+Follow startup, MCP request, tool-call, authentication, Homebox API, and error
+logs with:
 
 ```bash
 docker compose logs -f homebox-mcp
 ```
+
+Activity log lines include an ISO timestamp and useful request status and
+duration fields. Tool arguments, request bodies, passwords, and tokens are not
+logged. Logs are written to stderr so they cannot interfere with MCP's stdio
+protocol.
 
 Inside Compose, `HOMEBOX_URL=http://homebox:7745` works only when a service
 named `homebox` is reachable on a shared Docker network. If Homebox runs on
