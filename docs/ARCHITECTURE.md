@@ -116,6 +116,28 @@ session open across many sequential tool calls; this surfaced client-side as
 the official MCP SDK's own "SSE stream ended without a response" even
 though this server had already sent a complete, successful reply.
 
+Tool-call responses (the `hasRequests` branch of a POST) are further
+configured with `enableJsonResponse: true`, so each one is sent as a
+single complete JSON body instead of an SSE stream. This closes a second,
+independent gap behind the same symptom: the reference MCP client
+(`mcp` Python SDK's `streamable_http` transport) only attempts to resume an
+SSE response that gets interrupted before completion if that stream
+carried a resumable event ID, which requires an `eventStore` — not
+configured here, since nothing server-initiated needs mid-call resumption.
+Without one, any interruption of an in-progress SSE response — a dropped
+connection, an intermediate proxy timeout, anything cutting the stream
+before the final event — is unrecoverable client-side and reported as "SSE
+stream ended without a response", even though the server had already
+produced a complete, successful result. A plain JSON response has no
+equivalent partial-transfer window: the client either gets the whole body
+or the request fails outright, which is visibly different from "the tool
+call itself failed." Larger tool results (base64-encoded photos and other
+binary attachments) spend proportionally longer as an open SSE stream and
+were the ones actually observed hitting this in production; plain
+JSON-returning tools (item and location listings, etc.) never exhibited it.
+The standalone GET stream (for potential future server-initiated
+notifications) is unaffected by this option — it still uses SSE.
+
 The HTTP bearer token controls access to the MCP endpoint. It is separate from
 the Homebox credential and token used for downstream REST requests.
 

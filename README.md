@@ -167,6 +167,19 @@ an SSE response in flight, which surfaced to MCP clients as the official
 SDK's own "SSE stream ended without a response" even though this server
 had already sent a complete, successful reply.
 
+Tool-call responses are also sent as a single complete JSON body rather
+than an SSE stream (`enableJsonResponse: true`). Every tool call here is
+one request producing one response, so there's nothing to gain from a
+long-lived stream — and streaming has a real cost: the reference MCP
+client only resumes an interrupted SSE response when the stream carried a
+resumable event ID (which needs an `eventStore`, not configured here), and
+otherwise gives up immediately with "SSE stream ended without a response"
+even on a response this server had already completed successfully. Larger
+responses (base64-encoded photos and other attachments in particular)
+spend longer as an open stream and were disproportionately exposed to
+that gap; a single JSON body removes the "cut off partway through" window
+entirely.
+
 On successful startup, stderr includes the listener address, number of
 registered tools, readonly mode, and whether HTTP authentication is enabled:
 

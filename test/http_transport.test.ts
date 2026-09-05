@@ -107,6 +107,23 @@ test("a session persists across multiple sequential requests", async () => {
   }
 });
 
+test("tool-call responses are sent as a plain JSON body, not an SSE stream", async () => {
+  // Regression coverage: without enableJsonResponse, a response only
+  // completing partway through an SSE stream (a dropped connection, a
+  // proxy timeout, anything cutting the transfer short) is unrecoverable
+  // client-side for the reference MCP client -- it gives up immediately
+  // with "SSE stream ended without a response" even though the server had
+  // already produced a complete, successful result. A single JSON body has
+  // no equivalent partial-transfer window.
+  const sessionId = await initializeSession();
+  const res = await postMcp(toolsListRequest(), { "mcp-session-id": sessionId });
+  assert.equal(res.status, 200);
+  assert.ok(
+    (res.headers.get("content-type") ?? "").startsWith("application/json"),
+    `expected a JSON response, got content-type: ${res.headers.get("content-type")}`,
+  );
+});
+
 test("an unknown session id is rejected with 404", async () => {
   const res = await postMcp(toolsListRequest(), { "mcp-session-id": "00000000-0000-0000-0000-000000000000" });
   assert.equal(res.status, 404);

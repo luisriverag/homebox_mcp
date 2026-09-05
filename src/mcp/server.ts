@@ -211,6 +211,18 @@ export async function runHttpServer(): Promise<import("node:http").Server> {
         onsessioninitialized: (newSessionId) => {
           sessions.set(newSessionId, { server, transport });
         },
+        // Tool-call responses are single request/single response -- nothing
+        // here needs a long-lived SSE stream. Sending each as one complete
+        // JSON body instead avoids a failure mode with no recovery path: the
+        // MCP client only resumes an interrupted SSE response if the stream
+        // carried a resumable event id (which requires an eventStore, not
+        // configured here), and otherwise gives up immediately with "SSE
+        // stream ended without a response" -- even though this server had
+        // already produced a complete, successful result. Larger responses
+        // (base64-encoded photos in particular) spend longer as an open SSE
+        // stream and are disproportionately exposed to that gap; a single
+        // JSON body has no equivalent "cut off partway through" window.
+        enableJsonResponse: true,
       });
       transport.onclose = () => {
         if (transport.sessionId) sessions.delete(transport.sessionId);
