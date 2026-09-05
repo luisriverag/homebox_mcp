@@ -14,7 +14,7 @@ remain the source of truth for individual parameters.
 
 | Access | Tool | Purpose |
 |---|---|---|
-| Read | `items_list` | Search and filter inventory items. |
+| Read | `items_list` | Search every supplied English/Spanish alternate name and combine unique inventory items. |
 | Read | `items_get` | Get one item's complete details. |
 | Read | `items_path` | Get an item's ancestor-location breadcrumb. |
 | Read | `items_fields` | List custom-field names in use. |

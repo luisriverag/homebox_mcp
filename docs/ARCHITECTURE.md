@@ -172,6 +172,8 @@ transformations include:
 
 - Filtering location entities out of mixed entity search results for
   `items_list`.
+- Expanding item searches across English/Spanish alternate names and merging
+  the result pages by entity ID.
 - Flattening or traversing entity trees for location-oriented tools.
 - Merging the current resource into full-update bodies so omitted fields are
   preserved rather than reset.
