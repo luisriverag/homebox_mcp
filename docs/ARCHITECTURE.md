@@ -99,10 +99,22 @@ Express owns the listening socket. Optional MCP authentication middleware
 compares the complete `Authorization` header with
 `Bearer ${MCP_AUTH_TOKEN}` before requests reach the MCP route.
 
-The HTTP mode is stateless at the MCP transport level: each `POST` creates a
-fresh `McpServer` and `StreamableHTTPServerTransport`, handles that request, and
-closes both when the response closes. There is no MCP session store shared
-between requests. `GET` and `DELETE` on the MCP path return `405`.
+The HTTP mode is stateful at the MCP transport level: an `initialize` `POST`
+(no `Mcp-Session-Id` header) creates one `McpServer`/`StreamableHTTPServerTransport`
+pair and returns the transport-assigned session id in the `Mcp-Session-Id`
+response header; every subsequent `GET`/`POST`/`DELETE` on the MCP path must
+echo that header, and is routed to the matching pair from an in-memory
+session map. A request naming an unknown session id gets `404`; a
+non-`initialize` request with no session id gets `400`. A session's pair is
+torn down (and removed from the map) on `DELETE` or when the transport's own
+`onclose` fires (e.g. the underlying connection drops). An earlier
+per-request design — a fresh pair for every single request, discarded as
+soon as that request's own response closed — could tear a transport down
+while an adjacent request in the *same* logical client session still had an
+SSE response in flight, since ocabra_telegram and similar clients hold one
+session open across many sequential tool calls; this surfaced client-side as
+the official MCP SDK's own "SSE stream ended without a response" even
+though this server had already sent a complete, successful reply.
 
 The HTTP bearer token controls access to the MCP endpoint. It is separate from
 the Homebox credential and token used for downstream REST requests.

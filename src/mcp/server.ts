@@ -1,10 +1,10 @@
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { isInitializeRequest, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { config } from "../config.js";
 import { activeTools } from "../tools/index.js";
 import { HomeboxApiError, isBinaryResponse } from "../homebox/client.js";
@@ -140,7 +140,9 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
-async function runHttpServer(): Promise<void> {
+/** Exported (only) so tests can close the returned http.Server; runMcpServer
+ * is the normal production entry point and just awaits this and discards it. */
+export async function runHttpServer(): Promise<import("node:http").Server> {
   const { httpHost, httpPort, httpPath, authToken } = config.mcp;
 
   if (!authToken) {
@@ -172,10 +174,60 @@ async function runHttpServer(): Promise<void> {
     next();
   });
 
-  // Stateless: a fresh McpServer + transport per request, no session store
-  // to manage — this is a single-admin-user tool, not a multi-tenant
-  // service, so there's nothing sessions would buy here.
-  app.post(httpPath, async (req: HttpRequest, res: HttpResponse) => {
+  // Stateful: one McpServer + transport per client session, keyed by the
+  // Mcp-Session-Id the transport generates on initialize and the client
+  // echoes back on every subsequent request. An earlier version of this
+  // spun up a fresh McpServer + transport pair for every single request and
+  // tore it down as soon as that request's own response finished -- but a
+  // client session (e.g. ocabra_telegram's tool-calling loop) reuses one
+  // connection across many sequential tool calls, and tearing the
+  // transport down per-request could race an adjacent request's still-open
+  // SSE response, which surfaced client-side as the official SDK's own
+  // "SSE stream ended without a response" even though this server had
+  // already sent a complete, successful reply. Matches the SDK's own
+  // documented stateful-session pattern.
+  const sessions = new Map<string, { server: McpServer; transport: StreamableHTTPServerTransport }>();
+
+  async function resolveSession(
+    req: HttpRequest,
+    res: HttpResponse,
+  ): Promise<{ server: McpServer; transport: StreamableHTTPServerTransport } | undefined> {
+    const sessionId = req.header("mcp-session-id");
+    if (sessionId) {
+      const existing = sessions.get(sessionId);
+      if (existing) return existing;
+      res.status(404).json({
+        jsonrpc: "2.0",
+        error: { code: -32001, message: "Session not found" },
+        id: null,
+      });
+      return undefined;
+    }
+
+    if (req.method === "POST" && isInitializeRequest(req.body)) {
+      const server = buildServer();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (newSessionId) => {
+          sessions.set(newSessionId, { server, transport });
+        },
+      });
+      transport.onclose = () => {
+        if (transport.sessionId) sessions.delete(transport.sessionId);
+      };
+      await server.connect(transport);
+      return { server, transport };
+    }
+
+    res.status(400).json({
+      jsonrpc: "2.0",
+      error: { code: -32000, message: "Bad Request: No valid session ID provided" },
+      id: null,
+    });
+    return undefined;
+  }
+
+  const handleMcpRequest = async (req: HttpRequest, res: HttpResponse) => {
     const startedAt = Date.now();
     logActivity("MCP request received", { method: req.method, path: httpPath });
     res.on("finish", () => {
@@ -186,29 +238,11 @@ async function runHttpServer(): Promise<void> {
         durationMs: Date.now() - startedAt,
       });
     });
-    let server: McpServer | undefined;
-    let transport: StreamableHTTPServerTransport | undefined;
-    let cleanedUp = false;
-    // Idempotent, and registered on the response's own "close" event before
-    // handleRequest is even called: closing only after a successful handoff
-    // misses a client that disconnects mid-request (res "close" can fire
-    // during that await), and only closing from a catch block misses a
-    // throw from the transport's own constructor. Either gap leaks one
-    // McpServer + transport pair per request on a long-running,
-    // restart:always service.
-    const cleanup = () => {
-      if (cleanedUp) return;
-      cleanedUp = true;
-      transport?.close();
-      server?.close();
-    };
 
     try {
-      server = buildServer();
-      transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-      res.on("close", cleanup);
-      await server.connect(transport);
-      await transport.handleRequest(req, res, req.body);
+      const session = await resolveSession(req, res);
+      if (!session) return; // resolveSession already sent the error response
+      await session.transport.handleRequest(req, res, req.body);
     } catch (err) {
       console.error("homebox-mcp: error handling MCP request:", err);
       if (!res.headersSent) {
@@ -218,22 +252,15 @@ async function runHttpServer(): Promise<void> {
           id: null,
         });
       }
-      cleanup();
     }
-  });
-
-  const methodNotAllowed = (_req: HttpRequest, res: HttpResponse) => {
-    res.status(405).json({
-      jsonrpc: "2.0",
-      error: { code: -32000, message: "Method not allowed." },
-      id: null,
-    });
   };
-  app.get(httpPath, methodNotAllowed);
-  app.delete(httpPath, methodNotAllowed);
+
+  app.post(httpPath, handleMcpRequest);
+  app.get(httpPath, handleMcpRequest);
+  app.delete(httpPath, handleMcpRequest);
 
   let startupSettled = false;
-  await new Promise<void>((resolve, reject) => {
+  return await new Promise<import("node:http").Server>((resolve, reject) => {
     const server = app.listen(httpPort, httpHost, () => {
       logActivity("MCP server ready", {
         transport: "http",
@@ -243,7 +270,7 @@ async function runHttpServer(): Promise<void> {
         auth: authToken ? "on" : "off",
       });
       startupSettled = true;
-      resolve();
+      resolve(server);
     });
     // Rejecting after the promise above already resolved is a no-op, so a
     // *later* listener error (EMFILE under load, etc.) would otherwise be

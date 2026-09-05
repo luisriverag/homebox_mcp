@@ -154,10 +154,18 @@ matching `Authorization: Bearer <token>` header (constant-time compared)
 — set it unless you've deliberately decided the network path here is
 trusted on its own, since an unset token on a reachable port lets anyone
 who can reach it drive every tool this server exposes (Homebox reads, and
-writes unless `READONLY=Y`). The HTTP transport is stateless — each
-request gets a fresh `McpServer`/transport pair, no session store to
-manage, matching this being a single-admin-user tool rather than a
-multi-tenant service.
+writes unless `READONLY=Y`). The HTTP transport is stateful: an
+`initialize` request creates one `McpServer`/transport pair for that
+client session, keyed by the `Mcp-Session-Id` the transport assigns and
+the client echoes back on every subsequent request, and it's torn down
+when the client sends `DELETE` or the connection closes. A client that
+reuses one session across many sequential tool calls (the normal case —
+e.g. ocabra_telegram's tool-calling loop) needs this: an earlier
+per-request design, with a fresh pair for every single request, could tear
+a transport down while an adjacent request in the same session still had
+an SSE response in flight, which surfaced to MCP clients as the official
+SDK's own "SSE stream ended without a response" even though this server
+had already sent a complete, successful reply.
 
 On successful startup, stderr includes the listener address, number of
 registered tools, readonly mode, and whether HTTP authentication is enabled:
