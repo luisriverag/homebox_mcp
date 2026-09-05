@@ -83,6 +83,19 @@ test("items_photo_get downloads the primary photo and restores its image MIME ty
   try {
     const result = await photoGet.handler({ id: "bow" });
     assert.deepEqual(resultToContent(result), [
+      {
+        type: "text",
+        text: JSON.stringify(
+          {
+            itemId: "bow",
+            attachmentId: "primary",
+            delivery:
+              "The photo is included as native image content in this tool result. Do not emit an attachment: Markdown link; acknowledge briefly without reproducing the image URL.",
+          },
+          null,
+          2,
+        ),
+      },
       { type: "image", data: "aW1hZ2U=", mimeType: "image/png" },
     ]);
   } finally {

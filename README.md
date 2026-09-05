@@ -296,7 +296,10 @@ included in an `items_get` response to request a particular file.
 For the common “show/send me a photo” workflow, call `items_photo_get` with the
 item ID. It selects the primary photo (or the first photo if none is primary)
 and returns the bytes as native MCP image content without requiring the caller
-to inspect attachment metadata or provide an attachment ID.
+to inspect attachment metadata or provide an attachment ID. Clients should
+forward/render that native image block directly; they must not replace it with
+a Markdown `attachment:` URL, since those host-local references do not work
+across chat bridges such as Telegram.
 
 For a single-call alternative, pass `includeAttachments` to `items_get` with
 `photos`, `documents`, or `all`. The response retains the item's JSON details
