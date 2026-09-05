@@ -138,7 +138,7 @@ Supported request and response modes are:
 | `multipart` | Build `FormData`; the runtime supplies its boundary header. |
 | Default response | Parse JSON for JSON content types, otherwise return text. |
 | `raw` | Return response text, used for CSV. |
-| `binary` | Return a base64 string and content type. |
+| `binary` | Return a typed base64 payload with its MIME type and a stable `homebox://` URI. |
 | HTTP `204` | Return `undefined`, rendered by MCP as `OK`. |
 
 Concurrent calls share one in-flight login promise, preventing a burst of
@@ -181,7 +181,8 @@ transformations include:
 - Merging the current resource into full-update bodies so omitted fields are
   preserved rather than reset.
 - Converting file input from base64 to bytes for uploads.
-- Converting binary Homebox responses to base64 for text-oriented MCP results.
+- Converting binary Homebox responses to native MCP image content or embedded
+  resources (with base64 used as MCP's binary wire encoding).
 
 Transformations that can affect pagination, omitted records, or field values
 should be stated in the corresponding tool description.

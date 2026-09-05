@@ -15,7 +15,7 @@ remain the source of truth for individual parameters.
 | Access | Tool | Purpose |
 |---|---|---|
 | Read | `items_list` | Search every supplied alternate name and discovered related-tag ID, then combine unique inventory items. |
-| Read | `items_get` | Get one item's complete details. |
+| Read | `items_get` | Get one item's details, optionally with photo/document content (`includeAttachments`). |
 | Read | `items_path` | Get an item's ancestor-location breadcrumb. |
 | Read | `items_fields` | List custom-field names in use. |
 | Read | `items_field_values` | List values used by one custom field. |
@@ -27,7 +27,7 @@ remain the source of truth for individual parameters.
 | Write | `items_import` | Import Homebox-format CSV data. |
 | Write | `items_attachment_add` | Upload a file attachment. |
 | Write | `items_attachment_add_external` | Add an external document or URL. |
-| Read | `items_attachment_get` | Get attachment metadata. |
+| Read | `items_attachment_get` | Return a photo as MCP image content or a document as an embedded MCP resource. |
 | Write | `items_attachment_update` | Update attachment metadata or primary-photo status. |
 | Write | `items_attachment_delete` | Delete an attachment. |
 
@@ -41,6 +41,14 @@ remain the source of truth for individual parameters.
 | `tagNames` | Relevant tag names when IDs are unavailable. The server resolves complete tag names case- and accent-insensitively, then performs the same additive searches. |
 | `tags` | A strict Homebox tag filter. Unlike `relatedTagIds`, this narrows text searches and disables additive tag searches. |
 | `parentIds` | Restricts searches to the supplied parent item/location IDs. |
+| `deepSearch` | Opt-in exhaustive search over complete item details. Its `q` searches every scalar value; structured `filters` support top-level fields, dotted paths, and custom-field names with `contains`, `equals`, numeric/date comparison operators, and optional archived-item inclusion. |
+
+Deep search retrieves all candidate pages and then fetches complete item details
+in batches of ten before filtering locally. It can therefore find values that
+Homebox's normal text search does not index, including `purchaseFrom`, purchase
+or sale amounts, warranty data, and custom fields. Use ordinary `q` search when
+possible because deep search can be slow on large inventories.
+The result reports `scanned` so callers can explain the scope of the search.
 
 For a request such as “find all my motorbike things,” a client should first
 call `tags_list`. If the inventory contains a `Motorcycle` tag, call

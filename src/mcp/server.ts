@@ -4,10 +4,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { config } from "../config.js";
 import { activeTools } from "../tools/index.js";
-import { HomeboxApiError } from "../homebox/client.js";
+import { HomeboxApiError, isBinaryResponse } from "../homebox/client.js";
 import { logActivity } from "../logger.js";
+import { isToolContentResult } from "../tools/types.js";
 
 // Keep the few Express-facing annotations structural. Express is only used
 // indirectly through createMcpExpressApp(), and importing its DefinitelyTyped
@@ -25,12 +27,33 @@ interface HttpResponse extends ServerResponse {
 
 type Next = () => void;
 
-function resultToContent(result: unknown) {
+export function resultToContent(result: unknown): CallToolResult["content"] {
   if (result === undefined) {
     return [{ type: "text" as const, text: "OK" }];
   }
   if (typeof result === "string") {
     return [{ type: "text" as const, text: result }];
+  }
+  if (isToolContentResult(result)) {
+    return [
+      { type: "text" as const, text: JSON.stringify(result.value, null, 2) },
+      ...result.binaries.flatMap(resultToContent),
+    ];
+  }
+  if (isBinaryResponse(result)) {
+    if (result.mimeType.startsWith("image/")) {
+      return [{ type: "image" as const, data: result.data, mimeType: result.mimeType }];
+    }
+    return [
+      {
+        type: "resource" as const,
+        resource: {
+          uri: result.uri,
+          blob: result.data,
+          mimeType: result.mimeType,
+        },
+      },
+    ];
   }
   return [{ type: "text" as const, text: JSON.stringify(result, null, 2) }];
 }

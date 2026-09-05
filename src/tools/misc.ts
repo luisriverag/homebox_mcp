@@ -29,7 +29,7 @@ export const miscTools: ToolDef<any>[] = [
 
   defineTool({
     name: "qrcode_generate",
-    description: "Generate a QR code image encoding the given data. Returns base64-encoded JPEG bytes.",
+    description: "Generate a QR code image encoding the given data. Returns native MCP image content.",
     write: false,
     shape: { data: z.string().describe("Data to encode, e.g. a Homebox item URL") },
     handler: ({ data }) => homebox.request("GET", "/v1/qrcode", { query: { data }, binary: true }),

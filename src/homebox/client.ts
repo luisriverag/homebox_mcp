@@ -34,6 +34,25 @@ interface RequestOptions {
   binary?: boolean;
 }
 
+/** A binary API response that the MCP layer can expose as native content. */
+export interface BinaryResponse {
+  kind: "binary";
+  data: string;
+  mimeType: string;
+  uri: string;
+}
+
+export function isBinaryResponse(value: unknown): value is BinaryResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Partial<BinaryResponse>;
+  return (
+    candidate.kind === "binary" &&
+    typeof candidate.data === "string" &&
+    typeof candidate.mimeType === "string" &&
+    typeof candidate.uri === "string"
+  );
+}
+
 interface StoredToken {
   token: string;
   expiresAt: number; // epoch ms
@@ -185,8 +204,10 @@ export class HomeboxClient {
         if (!res.ok) throw new HomeboxApiError(res.status, path, await res.text());
         const buf = Buffer.from(await res.arrayBuffer());
         return {
-          base64: buf.toString("base64"),
-          contentType: res.headers.get("content-type") ?? "application/octet-stream",
+          kind: "binary",
+          data: buf.toString("base64"),
+          mimeType: res.headers.get("content-type")?.split(";", 1)[0] || "application/octet-stream",
+          uri: `homebox://api${path}`,
         } as unknown as T;
       }
 
