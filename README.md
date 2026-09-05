@@ -256,7 +256,8 @@ browser.
 
 - **Items** — list/search, get, create, update, patch, delete, breadcrumb
   path, custom fields, CSV import/export, attachments (add/get/update/
-  delete, plus external/link attachments), maintenance log (list/create/
+  delete, plus external/link attachments), bilingual English/Spanish search
+  with alternate names, maintenance log (list/create/
   update/delete, plus an all-items maintenance query)
 - **Locations** — list, tree, get, create, update, delete. Homebox has no
   separate "locations" resource anymore — a location is an entity whose
