@@ -16,6 +16,7 @@ remain the source of truth for individual parameters.
 |---|---|---|
 | Read | `items_list` | Search every supplied alternate name and discovered related-tag ID, then combine unique inventory items. |
 | Read | `items_get` | Get one item's details, optionally with photo/document content (`includeAttachments`). |
+| Read | `items_photo_get` | Return an item's primary (or first) photo as native MCP image content. |
 | Read | `items_path` | Get an item's ancestor-location breadcrumb. |
 | Read | `items_fields` | List custom-field names in use. |
 | Read | `items_field_values` | List values used by one custom field. |

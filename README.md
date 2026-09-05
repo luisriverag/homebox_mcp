@@ -258,7 +258,7 @@ browser.
 
 ## Tool coverage
 
-64 MCP tools, covering Homebox's current `/v1/entities` + `/v1/tags` API:
+65 MCP tools, covering Homebox's current `/v1/entities` + `/v1/tags` API:
 
 - **Items** — list/search, get, create, update, patch, delete, breadcrumb
   path, custom fields, CSV import/export, attachments (add/download/update/
@@ -292,6 +292,11 @@ For a complete, browsable list of tool names and access levels, see the
 photos use MCP image content so capable clients can display them, while PDFs
 and other documents use embedded MCP resource content. Use the attachment IDs
 included in an `items_get` response to request a particular file.
+
+For the common “show/send me a photo” workflow, call `items_photo_get` with the
+item ID. It selects the primary photo (or the first photo if none is primary)
+and returns the bytes as native MCP image content without requiring the caller
+to inspect attachment metadata or provide an attachment ID.
 
 For a single-call alternative, pass `includeAttachments` to `items_get` with
 `photos`, `documents`, or `all`. The response retains the item's JSON details

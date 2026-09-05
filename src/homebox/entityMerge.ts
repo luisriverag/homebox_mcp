@@ -28,6 +28,7 @@ export interface EntityOut {
   attachments?: Array<{
     id: string;
     mimeType?: string;
+    primary?: boolean;
     title?: string;
     type?: string;
   }>;

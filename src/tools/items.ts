@@ -130,6 +130,38 @@ export const itemTools: ToolDef<any>[] = [
   }),
 
   defineTool({
+    name: "items_photo_get",
+    description:
+      "Return an item's primary photo as native MCP image content (or its first photo when no primary is set). Use this after items_list whenever the user asks to see, show, or send a photo; do not respond with an attachment: URL from item metadata.",
+    write: false,
+    shape: { id },
+    handler: async ({ id }) => {
+      const item = await homebox.get<EntityOut>(`/v1/entities/${id}`);
+      const photos = (item.attachments ?? []).filter(
+        (attachment) => attachment.type === "photo" || attachment.mimeType?.startsWith("image/"),
+      );
+      const photo = photos.find((attachment) => attachment.primary) ?? photos[0];
+      if (!photo) {
+        throw new Error(`Item ${id} has no photo attachments`);
+      }
+
+      const binary = await homebox.request<BinaryResponse>(
+        "GET",
+        `/v1/entities/${id}/attachments/${photo.id}`,
+        { binary: true },
+      );
+
+      // Older Homebox versions can serve downloads as application/octet-stream
+      // even though attachment metadata contains the precise image type. MCP
+      // clients only render an image block when its MIME type starts with image/.
+      if (!binary.mimeType.startsWith("image/") && photo.mimeType?.startsWith("image/")) {
+        return { ...binary, mimeType: photo.mimeType };
+      }
+      return binary;
+    },
+  }),
+
+  defineTool({
     name: "items_path",
     description: "Get the breadcrumb path (ancestor locations) of an item.",
     write: false,
