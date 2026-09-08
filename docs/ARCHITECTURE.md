@@ -244,6 +244,15 @@ transformations include:
   mimeType, uri }` shape `HomeboxClient`'s `binary` mode produces, so they
   flow through `resultToContent` identically -- a PDF becomes an embedded
   MCP resource, a PNG becomes native image content.
+  `labels_generate_qr_sheet`'s text uses `pdf-lib`'s built-in Helvetica (one
+  of the PDF spec's 14 standard fonts every viewer supplies itself), so it
+  needs no system font. `reporting_spend_summary`'s chart text is different:
+  `sharp` rasterizes SVG via fontconfig/pango, so it needs an actual font
+  installed in the *runtime* environment -- without one, titles/axis
+  labels/captions render as unreadable placeholder glyphs while the
+  bars/lines/axes render fine. The Dockerfile installs `fontconfig` +
+  `ttf-dejavu` for this; a non-Docker install must provide an equivalent
+  fontconfig + font setup itself.
 
 Transformations that can affect pagination, omitted records, or field values
 should be stated in the corresponding tool description.
