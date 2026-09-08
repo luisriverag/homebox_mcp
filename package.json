@@ -16,11 +16,15 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "dotenv": "^16.4.5",
     "express": "^5.2.1",
+    "pdf-lib": "^1.17.1",
+    "qrcode": "^1.5.4",
+    "sharp": "^0.35.4",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.2",
+    "@types/qrcode": "^1.5.6",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

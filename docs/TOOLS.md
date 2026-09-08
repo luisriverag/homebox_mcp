@@ -1,6 +1,6 @@
 # Tool reference
 
-homebox-mcp exposes 65 tools when `READONLY=N`. With `READONLY=Y`, only the
+homebox-mcp exposes 69 tools when `READONLY=N`. With `READONLY=Y`, only the
 tools marked **Read** below are registered; write tools are absent from MCP tool
 discovery entirely. A tool marked **Write** may create, modify, delete, upload,
 send, or run an inventory-wide action.
@@ -145,6 +145,18 @@ These write tools operate across the inventory rather than on a single item.
 | Write | `actions_set_primary_photos` | Set first photos as primary photos. |
 | Write | `actions_zero_item_time_fields` | Reset item timestamps to the start of their day. |
 | Write | `actions_create_missing_thumbnails` | Generate missing photo thumbnails. |
+| Write | `actions_tag_subtree` | Add a tag to an item and everything nested under it, recursively. |
+| Write | `actions_attach_photo_by_tag` | Upload the same photo to every item carrying a given tag. |
+
+Unlike the other bulk actions above (thin proxies to Homebox's own
+`/v1/actions/*` endpoints), `actions_tag_subtree` and
+`actions_attach_photo_by_tag` are implemented in this server: the first walks
+`items_list`'s `parentIds` relationship breadth-first from a root item
+(`src/homebox/subtree.ts`), the second looks up a tag's items and checks each
+one's existing attachments before uploading. Both are capped at
+`MAX_BULK_ACTION_ITEMS` (default 500) items and report `truncated: true`
+rather than silently continuing past it; `actions_tag_subtree` also supports
+`dryRun` to preview affected items without writing.
 
 ## Status, lookup, and reporting
 
@@ -155,6 +167,34 @@ These write tools operate across the inventory rather than on a single item.
 | Read | `assets_get_by_id` | Find an item by its numeric asset ID. |
 | Read | `qrcode_generate` | Return a QR code as base64-encoded JPEG data. |
 | Read | `reporting_bill_of_materials` | Export a bill-of-materials report as CSV. |
+| Read | `reporting_spend_summary` | Analyze purchase spending by vendor, location, tag, and time, with optional chart images. |
+
+`reporting_spend_summary` fetches every candidate item's full details, since
+purchase price/date/vendor aren't on the item list endpoint (the same reason
+`items_list`'s `deepSearch` does the same) -- narrow scope with `locationIds`/
+`tagIds` on a large inventory. Tag totals use equal-split allocation (an
+item's price is divided across all its tags) so a multi-tag item doesn't
+inflate every tag's total by its full price. Unless `charts: false`, the
+result also includes bar charts (vendor/location/tag) and a line chart
+(spend over time) as native MCP image content, hand-rendered as SVG and
+rasterized to PNG (`src/homebox/charts.ts`) -- no charting library or native
+canvas dependency.
+
+## Labels
+
+| Access | Tool | Purpose |
+|---|---|---|
+| Read | `labels_generate_qr_sheet` | Generate a printable A4 PDF of QR-code labels for items/locations/URLs. |
+
+`labels_generate_qr_sheet` resolves `itemIds`/`locationIds` to their Homebox
+web-UI URLs (via `HOMEBOX_WEB_URL`) and/or accepts raw `urls` directly (e.g.
+from a prior search), then lays them out as a grid of QR codes on A4 pages
+(default 5 per row, as many rows as fit), each with a small glyph
+(circle=item, square=location) and the entity's name as a caption. Returned
+as native MCP document content (a PDF), the same path
+`items_attachment_get`'s documents use -- a chat bridge like ocabra_telegram
+delivers it as a real file the user can print. It does not modify Homebox
+data, so it stays available under `READONLY=Y`.
 
 ## Typical lookup flow
 

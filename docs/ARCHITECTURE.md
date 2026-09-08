@@ -237,6 +237,13 @@ transformations include:
   without this correction a photo would silently fall back to an embedded
   resource block. All three tools share this behavior through a
   `restoreImageMimeType` helper in `src/tools/items.ts`.
+- Generating binary content locally instead of proxying a Homebox response:
+  `labels_generate_qr_sheet` renders a QR-label-sheet PDF (`pdf-lib` +
+  `qrcode`), and `reporting_spend_summary` renders chart PNGs from
+  hand-written SVG via `sharp`. Both build the same `{ kind: "binary", data,
+  mimeType, uri }` shape `HomeboxClient`'s `binary` mode produces, so they
+  flow through `resultToContent` identically -- a PDF becomes an embedded
+  MCP resource, a PNG becomes native image content.
 
 Transformations that can affect pagination, omitted records, or field values
 should be stated in the corresponding tool description.

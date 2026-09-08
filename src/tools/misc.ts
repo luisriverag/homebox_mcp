@@ -34,12 +34,4 @@ export const miscTools: ToolDef<any>[] = [
     shape: { data: z.string().describe("Data to encode, e.g. a Homebox item URL") },
     handler: ({ data }) => homebox.request("GET", "/v1/qrcode", { query: { data }, binary: true }),
   }),
-
-  defineTool({
-    name: "reporting_bill_of_materials",
-    description: "Export a full bill-of-materials report of the inventory as a CSV string.",
-    write: false,
-    shape: {},
-    handler: () => homebox.request("GET", "/v1/reporting/bill-of-materials", { raw: true }),
-  }),
 ];
