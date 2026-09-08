@@ -9,6 +9,18 @@ RUN npm run build
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+
+# sharp (used by reporting_spend_summary to rasterize chart SVGs to PNG)
+# renders text via fontconfig/pango under the hood. A bare node:*-alpine
+# image has neither installed, so every <text> element -- chart titles,
+# axis labels, bucket captions -- comes out as unreadable placeholder
+# ("tofu") glyphs while the bars/lines/axes themselves render fine
+# (verified: zero registered fonts reproduces this exactly). fontconfig +
+# a real font (DejaVu Sans covers the Latin script this server's labels
+# use, including currency symbols) fixes it; fc-cache builds the font
+# index that fontconfig/pango actually consult at render time.
+RUN apk add --no-cache fontconfig ttf-dejavu && fc-cache -f
+
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist

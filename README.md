@@ -468,6 +468,16 @@ This is expected when `READONLY=Y`. Set `READONLY=N` and restart the process
 only after reviewing the credentials and network access available to the MCP
 client.
 
+### `reporting_spend_summary` charts have no title or axis labels
+
+The bars/lines render but the text is missing (or shows as unreadable
+placeholder glyphs) because `sharp` rasterizes the chart SVG via
+fontconfig/pango, and the runtime environment has no font installed. The
+Docker image installs `fontconfig` + `ttf-dejavu` for this; a manual
+(non-Docker) install needs an equivalent fontconfig + font setup on the host.
+This does not affect `labels_generate_qr_sheet`'s PDF text, which uses a
+built-in PDF standard font instead.
+
 ## Development
 
 ```bash
