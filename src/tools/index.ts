@@ -9,6 +9,8 @@ import { groupTools } from "./group.js";
 import { actionTools } from "./actions.js";
 import { miscTools } from "./misc.js";
 import { entityTypeTools } from "./entity_types.js";
+import { reportingTools } from "./reporting.js";
+import { labelTools } from "./labels.js";
 
 export const allTools: ToolDef<any>[] = [
   ...itemTools,
@@ -20,6 +22,8 @@ export const allTools: ToolDef<any>[] = [
   ...actionTools,
   ...miscTools,
   ...entityTypeTools,
+  ...reportingTools,
+  ...labelTools,
 ];
 
 /** Tools available given the current READONLY setting: write tools are dropped entirely when READONLY=Y. */

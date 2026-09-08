@@ -37,6 +37,11 @@ developing unless the change specifically requires writes.
 | `src/homebox/entityTypes.ts` | Resolving default and custom entity type IDs. |
 | `src/homebox/search.ts` | Alternate-name query expansion and related-tag resolution for `items_list`. |
 | `src/homebox/deepSearch.ts` | Exhaustive `items_list` `deepSearch` over full item details. |
+| `src/homebox/subtree.ts` | Breadth-first descendant discovery (via `parentIds`) for `actions_tag_subtree`. |
+| `src/homebox/tagResolve.ts` | Find-or-create a tag by name, shared by tools that accept `tagId`/`tagName`. |
+| `src/homebox/spendReport.ts` | Purchase-spend aggregation (by vendor/location/tag/month) for `reporting_spend_summary`. |
+| `src/homebox/charts.ts` | Hand-rolled SVG bar/line chart rendering, rasterized to PNG via `sharp` -- no charting library or native canvas dependency. |
+| `src/homebox/labelSheet.ts` | QR-code label-sheet PDF layout for `labels_generate_qr_sheet`. |
 | `src/logger.ts` | `logActivity()`, the shared stderr activity-log writer. |
 | `src/tools/types.ts` | Shared `ToolDef`, `defineTool`, and safe path-ID schema. |
 | `src/tools/index.ts` | Combines every resource module's tools into `allTools` and applies `READONLY` filtering. |

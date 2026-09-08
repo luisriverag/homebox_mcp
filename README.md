@@ -184,7 +184,7 @@ On successful startup, stderr includes the listener address, number of
 registered tools, readonly mode, and whether HTTP authentication is enabled:
 
 ```text
-homebox-mcp: MCP server ready over HTTP on 0.0.0.0:8765/mcp (65 tools, READONLY=N, auth=on)
+homebox-mcp: MCP server ready over HTTP on 0.0.0.0:8765/mcp (69 tools, READONLY=N, auth=on)
 ```
 
 The `/mcp` route is an MCP endpoint, not a conventional browser page or
@@ -279,7 +279,7 @@ browser.
 
 ## Tool coverage
 
-65 MCP tools, covering Homebox's current `/v1/entities` + `/v1/tags` API:
+69 MCP tools, covering Homebox's current `/v1/entities` + `/v1/tags` API:
 
 - **Items** — list/search, get, create, update, patch, delete, breadcrumb
   path, custom fields, CSV import/export, attachments (add/download/update/
@@ -301,9 +301,14 @@ browser.
   members (list/remove), statistics (overall, by tag, by location, purchase
   price over time)
 - **Bulk actions** — ensure asset IDs, ensure import refs, set primary
-  photos, zero item time fields, create missing thumbnails
+  photos, zero item time fields, create missing thumbnails, tag an item and
+  everything nested under it, attach the same photo to every item carrying
+  a tag
+- **Reporting** — bill-of-materials CSV, purchase-spend analysis by vendor/
+  location/tag/time with optional chart images
+- **Labels** — printable A4 sheet of QR-code labels for items/locations/URLs
 - **Misc** — server status, currency list, asset-ID lookup, QR code
-  generation, bill-of-materials report
+  generation
 
 See `src/tools/*.ts` for the exact input schema of each tool.
 For a complete, browsable list of tool names and access levels, see the
