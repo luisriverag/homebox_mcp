@@ -57,5 +57,12 @@ export async function discoverDescendants(
     frontier = nextFrontier;
   }
 
-  return { items: [...collected.values()], truncated };
+  // Items and locations share this same /v1/entities endpoint (a location is
+  // just an entity whose entityType.isLocation is true), the same reason
+  // items_list filters them out of its own results. A location isn't
+  // taggable the way an item is, so it's excluded from the returned set --
+  // but still traversed through above, in case a real item is nested
+  // beneath one.
+  const items = [...collected.values()].filter((entity) => !entity.entityType?.isLocation);
+  return { items, truncated };
 }

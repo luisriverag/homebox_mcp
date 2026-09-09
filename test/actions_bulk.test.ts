@@ -126,6 +126,45 @@ test("actions_attach_photo_by_tag skips items that already have a photo unless f
   }
 });
 
+test("actions_attach_photo_by_tag excludes locations from a tag's items", async () => {
+  const originalGet = homebox.get.bind(homebox);
+  const originalRequest = homebox.request.bind(homebox);
+  const uploaded: string[] = [];
+
+  homebox.get = (async (path: string) => {
+    if (path === "/v1/tags/tag-1") {
+      return {
+        items: [
+          { id: "loc-1", name: "Garage", entityType: { isLocation: true } },
+          { id: "item-1", name: "Drill", attachments: [] },
+        ],
+      };
+    }
+    if (path === "/v1/entities/item-1") return { attachments: [] };
+    throw new Error(`Unexpected GET ${path} -- a location must never be fetched/uploaded to`);
+  }) as typeof homebox.get;
+
+  homebox.request = (async (method: string, path: string) => {
+    uploaded.push(path);
+    return {};
+  }) as typeof homebox.request;
+
+  try {
+    const result = (await tool("actions_attach_photo_by_tag").handler({
+      tagId: "tag-1",
+      fileBase64: Buffer.from("fake-image").toString("base64"),
+      fileName: "photo.jpg",
+    })) as any;
+
+    assert.equal(result.matchedCount, 1);
+    assert.deepEqual(result.results.map((r: any) => r.id), ["item-1"]);
+    assert.deepEqual(uploaded, ["/v1/entities/item-1/attachments"]);
+  } finally {
+    homebox.get = originalGet;
+    homebox.request = originalRequest;
+  }
+});
+
 test("actions_attach_photo_by_tag uploads to every matching item when force is set", async () => {
   const originalGet = homebox.get.bind(homebox);
   const originalRequest = homebox.request.bind(homebox);

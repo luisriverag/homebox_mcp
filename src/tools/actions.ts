@@ -113,7 +113,9 @@ export const actionTools: ToolDef<any>[] = [
     handler: async ({ tagId, tagName, fileBase64, fileName, force }: any) => {
       const resolvedTagId = await resolveTagId({ tagId, tagName });
       const tag = await homebox.get<{ items?: EntityOut[] }>(`/v1/tags/${resolvedTagId}`);
-      const allItems = tag.items ?? [];
+      // Locations can carry tags too but aren't photo-attachable the way an
+      // item is (see actions_tag_subtree's same exclusion in subtree.ts).
+      const allItems = (tag.items ?? []).filter((entity) => !entity.entityType?.isLocation);
       const items = allItems.slice(0, config.maxBulkActionItems);
       const truncated = allItems.length > items.length;
 
