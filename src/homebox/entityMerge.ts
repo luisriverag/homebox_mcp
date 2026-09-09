@@ -1,3 +1,5 @@
+import { homebox } from "./client.js";
+
 export interface EntityOut {
   id?: string;
   archived?: boolean;
@@ -72,4 +74,29 @@ export function entityUpdateBodyFromCurrent(current: EntityOut) {
     warrantyDetails: current.warrantyDetails,
     warrantyExpires: current.warrantyExpires,
   };
+}
+
+/**
+ * Items and locations share the same /v1/entities/{id} endpoint (a location
+ * is just an entity whose entityType.isLocation is true), so nothing stops
+ * an items_* tool from silently operating on a location's id, or vice
+ * versa -- e.g. locations_delete would delete a real item with no error if
+ * handed an item id by mistake. Throws a clear, LLM-actionable error on a
+ * mismatch instead of silently acting on the wrong kind of entity.
+ */
+export function assertEntityKind(entity: EntityOut, expected: "item" | "location", id: string): void {
+  const actual = entity.entityType?.isLocation ? "location" : "item";
+  if (actual !== expected) {
+    throw new Error(
+      `${id} is an entity of type "${actual}", not "${expected}" -- use the ${actual}s_* tools for it instead.`,
+    );
+  }
+}
+
+/** Fetches an entity and verifies it's the expected kind (item vs. location)
+ * before returning it -- see assertEntityKind. */
+export async function fetchEntityOfKind(id: string, expected: "item" | "location"): Promise<EntityOut> {
+  const entity = await homebox.get<EntityOut>(`/v1/entities/${id}`);
+  assertEntityKind(entity, expected, id);
+  return entity;
 }

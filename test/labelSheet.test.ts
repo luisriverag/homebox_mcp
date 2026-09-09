@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PDFDocument } from "pdf-lib";
 import { config } from "../src/config.js";
-import { homebox } from "../src/homebox/client.js";
+import { HomeboxApiError, homebox } from "../src/homebox/client.js";
 import { generateLabelSheetPdf, resolveEntityLabelEntries, urlLabelEntries } from "../src/homebox/labelSheet.js";
 
 test("urlLabelEntries infers kind from the URL path and ignores blank lines", () => {
@@ -28,11 +28,42 @@ test("resolveEntityLabelEntries builds web URLs and uses the entity name as capt
   }) as typeof homebox.get;
 
   try {
-    const entries = await resolveEntityLabelEntries(["item-1", "loc-1"]);
+    const { entries, notFound } = await resolveEntityLabelEntries(["item-1", "loc-1"]);
     assert.deepEqual(entries, [
       { url: `${config.homebox.webUrl}/item/item-1`, caption: "Drill", kind: "item" },
       { url: `${config.homebox.webUrl}/location/loc-1`, caption: "Garage", kind: "location" },
     ]);
+    assert.deepEqual(notFound, []);
+  } finally {
+    homebox.get = original;
+  }
+});
+
+test("resolveEntityLabelEntries skips a deleted id instead of aborting the whole batch", async () => {
+  const original = homebox.get.bind(homebox);
+  homebox.get = (async (path: string) => {
+    if (path === "/v1/entities/item-1") return { id: "item-1", name: "Drill", entityType: { isLocation: false } };
+    if (path === "/v1/entities/gone") throw new HomeboxApiError(404, path, { error: "not found" });
+    throw new Error(`Unexpected path ${path}`);
+  }) as typeof homebox.get;
+
+  try {
+    const { entries, notFound } = await resolveEntityLabelEntries(["item-1", "gone"]);
+    assert.deepEqual(entries, [{ url: `${config.homebox.webUrl}/item/item-1`, caption: "Drill", kind: "item" }]);
+    assert.deepEqual(notFound, ["gone"]);
+  } finally {
+    homebox.get = original;
+  }
+});
+
+test("resolveEntityLabelEntries still throws on a non-404 error", async () => {
+  const original = homebox.get.bind(homebox);
+  homebox.get = (async () => {
+    throw new HomeboxApiError(401, "/v1/entities/item-1", { error: "unauthorized" });
+  }) as typeof homebox.get;
+
+  try {
+    await assert.rejects(() => resolveEntityLabelEntries(["item-1"]), HomeboxApiError);
   } finally {
     homebox.get = original;
   }

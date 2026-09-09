@@ -20,18 +20,28 @@ export const labelTools: ToolDef<any>[] = [
       brandingText: z.string().max(120).optional().describe("Extra text appended to every label's caption, e.g. a household name"),
     },
     handler: async ({ itemIds = [], locationIds = [], urls = [], cols, brandingText }) => {
-      const entries: LabelEntry[] = [
-        ...(await resolveEntityLabelEntries([...itemIds, ...locationIds])),
-        ...urlLabelEntries(urls),
-      ];
+      const { entries: resolvedEntries, notFound } = await resolveEntityLabelEntries([
+        ...itemIds,
+        ...locationIds,
+      ]);
+      const entries: LabelEntry[] = [...resolvedEntries, ...urlLabelEntries(urls)];
       if (entries.length === 0) {
-        throw new Error("Provide at least one of itemIds, locationIds, or urls.");
+        throw new Error(
+          notFound.length > 0
+            ? `None of the given itemIds/locationIds exist anymore: ${notFound.join(", ")}`
+            : "Provide at least one of itemIds, locationIds, or urls.",
+        );
       }
       const pdfBytes = await generateLabelSheetPdf(entries, { cols, brandingText });
       const base64 = Buffer.from(pdfBytes).toString("base64");
       const result: ToolContentResult = {
         kind: "tool-content",
-        value: { labelCount: entries.length, cols: cols ?? 5, sizeBytes: pdfBytes.byteLength },
+        value: {
+          labelCount: entries.length,
+          cols: cols ?? 5,
+          sizeBytes: pdfBytes.byteLength,
+          ...(notFound.length > 0 ? { skippedNotFound: notFound } : {}),
+        },
         binaries: [
           {
             kind: "binary",

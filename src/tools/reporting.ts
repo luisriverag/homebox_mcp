@@ -55,14 +55,23 @@ export const reportingTools: ToolDef<any>[] = [
       if (summary.byMonth.length)
         chartJobs.push({ title: "spend-over-time", svg: renderLineChartSvg("Spend over time", summary.byMonth) });
 
-      const binaries = await Promise.all(
-        chartJobs.map(async (job) => ({
-          kind: "binary" as const,
-          data: (await svgToPngBuffer(job.svg)).toString("base64"),
-          mimeType: "image/png",
-          uri: `homebox-mcp://reporting/${job.title}.png`,
-        })),
-      );
+      // The JSON/CSV summary above is already fully computed at this point;
+      // a chart-rendering failure (e.g. sharp/fontconfig unavailable in this
+      // environment) shouldn't throw it away -- return it chart-less with an
+      // explanation instead of discarding a good report over an image step.
+      let binaries: ToolContentResult["binaries"] = [];
+      try {
+        binaries = await Promise.all(
+          chartJobs.map(async (job) => ({
+            kind: "binary" as const,
+            data: (await svgToPngBuffer(job.svg)).toString("base64"),
+            mimeType: "image/png",
+            uri: `homebox-mcp://reporting/${job.title}.png`,
+          })),
+        );
+      } catch (err) {
+        (value as any).chartsError = `Charts could not be rendered: ${err instanceof Error ? err.message : String(err)}`;
+      }
 
       const result: ToolContentResult = { kind: "tool-content", value, binaries };
       return result;
