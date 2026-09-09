@@ -49,6 +49,31 @@ test("discoverDescendants stops and reports truncation past maxItems", async () 
   });
 });
 
+test("discoverDescendants excludes locations from the result but still traverses through them", async () => {
+  await withMockedGet((path, query) => {
+    if (path === "/v1/entities/root") return { id: "root", name: "Toolbox" };
+    if (path === "/v1/entities") {
+      if (query.page > 1) return { items: [] };
+      const parentIds: string[] = query.parentIds;
+      if (parentIds.includes("root")) {
+        return { items: [{ id: "sub-location", name: "Sub Shelf", entityType: { isLocation: true } }] };
+      }
+      if (parentIds.includes("sub-location")) {
+        return { items: [{ id: "nested-item", name: "Nested Wrench" }] };
+      }
+      return { items: [] };
+    }
+    throw new Error(`Unexpected request to ${path}`);
+  }, async () => {
+    const { items, truncated } = await discoverDescendants("root");
+    assert.equal(truncated, false);
+    assert.deepEqual(
+      items.map((item) => item.id).sort(),
+      ["nested-item", "root"],
+    );
+  });
+});
+
 test("discoverDescendants returns just the root when it has no children", async () => {
   await withMockedGet((path, query) => {
     if (path === "/v1/entities/root") return { id: "root", name: "Lonely item" };
