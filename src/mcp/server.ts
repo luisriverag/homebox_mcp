@@ -3,7 +3,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
+import express from "express";
+import { localhostHostValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
 import { isInitializeRequest, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { config } from "../config.js";
 import { activeTools } from "../tools/index.js";
@@ -126,6 +127,30 @@ export async function runMcpServer(): Promise<void> {
   });
 }
 
+/** Mirrors @modelcontextprotocol/sdk's createMcpExpressApp (DNS-rebinding
+ * protection for a localhost bind) but with a configurable JSON body limit.
+ * The SDK helper hardcodes express.json()'s 100KB default, which silently
+ * 413s the base64 photo/CSV bodies this server's write tools accept long
+ * before the tool handler ever sees them -- and once express.json() has
+ * already rejected a request, no later middleware gets a chance to parse it
+ * with a larger limit instead, so the app has to be built by hand here. */
+function createHttpApp(host: string, bodyLimitBytes: number) {
+  const app = express();
+  app.use(express.json({ limit: bodyLimitBytes }));
+
+  const localhostHosts = ["127.0.0.1", "localhost", "::1"];
+  if (localhostHosts.includes(host)) {
+    app.use(localhostHostValidation());
+  } else if (host === "0.0.0.0" || host === "::") {
+    console.warn(
+      `Warning: Server is binding to ${host} without DNS rebinding protection. ` +
+        "Consider using the allowedHosts option to restrict allowed hosts, " +
+        "or use authentication to protect your server.",
+    );
+  }
+  return app;
+}
+
 /** Constant-time string compare that tolerates differing lengths (Node's
  * timingSafeEqual throws on a length mismatch instead of just returning
  * false), so a bearer-token check doesn't leak the expected length via
@@ -154,7 +179,7 @@ export async function runHttpServer(): Promise<import("node:http").Server> {
     );
   }
 
-  const app = createMcpExpressApp({ host: httpHost });
+  const app = createHttpApp(httpHost, config.mcp.httpBodyLimitBytes);
 
   app.use((req: HttpRequest, res: HttpResponse, next: Next) => {
     if (!authToken) {

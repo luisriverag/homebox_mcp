@@ -112,6 +112,7 @@ required, then restart the server.
 | `MCP_TRANSPORT` | no | `stdio` (default) or `http` — see "Running as an HTTP service". |
 | `MCP_HTTP_HOST` / `MCP_HTTP_PORT` / `MCP_HTTP_PATH` | no | Only used when `MCP_TRANSPORT=http`. Defaults: `0.0.0.0`, `8765`, `/mcp`. |
 | `MCP_AUTH_TOKEN` | no | Only used when `MCP_TRANSPORT=http` — required in practice; see "Running as an HTTP service". |
+| `MCP_HTTP_BODY_LIMIT_BYTES` | no | Only used when `MCP_TRANSPORT=http`. Max JSON request body size, in bytes. Default `10485760` (10MiB) — raise it if a photo upload (`items_attachment_add`, `actions_attach_photo_by_tag`) or CSV import (`items_import`) is rejected as too large. |
 
 `READONLY` is enforced at the tool-registration layer: when `READONLY=Y`,
 write tools (`items_create`, `items_delete`, `locations_update`, …) are

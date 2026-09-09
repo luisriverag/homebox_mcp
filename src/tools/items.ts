@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { homebox, type BinaryResponse } from "../homebox/client.js";
 import { resolveEntityTypeId } from "../homebox/entityTypes.js";
-import { entityUpdateBodyFromCurrent, type EntityOut } from "../homebox/entityMerge.js";
+import { assertEntityKind, entityUpdateBodyFromCurrent, fetchEntityOfKind, type EntityOut } from "../homebox/entityMerge.js";
 import { buildSearchTerms, findRelevantTags, mergeEntitySearchResults } from "../homebox/search.js";
 import { deepSearchItems } from "../homebox/deepSearch.js";
 import { defineTool, safeId, type ToolContentResult, type ToolDef } from "./types.js";
@@ -126,6 +126,7 @@ export const itemTools: ToolDef<any>[] = [
     },
     handler: async ({ id, includeAttachments }) => {
       const item = await homebox.get<EntityOut>(`/v1/entities/${id}`);
+      assertEntityKind(item, "item", id);
       if (!includeAttachments) return item;
 
       const attachments = (item.attachments ?? []).filter((attachment) => {
@@ -291,6 +292,7 @@ export const itemTools: ToolDef<any>[] = [
     },
     handler: async ({ id, ...updates }) => {
       const current = await homebox.get<EntityOut>(`/v1/entities/${id}`);
+      assertEntityKind(current, "item", id);
       const body = { ...entityUpdateBodyFromCurrent(current), ...updates };
       return homebox.put(`/v1/entities/${id}`, body);
     },
@@ -307,7 +309,10 @@ export const itemTools: ToolDef<any>[] = [
       parentId: safeId.nullable().optional(),
       entityTypeId: safeId.optional(),
     },
-    handler: ({ id, ...body }) => homebox.patch(`/v1/entities/${id}`, body),
+    handler: async ({ id, ...body }) => {
+      await fetchEntityOfKind(id, "item");
+      return homebox.patch(`/v1/entities/${id}`, body);
+    },
   }),
 
   defineTool({
@@ -315,7 +320,10 @@ export const itemTools: ToolDef<any>[] = [
     description: "Permanently delete an item.",
     write: true,
     shape: { id },
-    handler: ({ id }) => homebox.delete(`/v1/entities/${id}`),
+    handler: async ({ id }) => {
+      await fetchEntityOfKind(id, "item");
+      return homebox.delete(`/v1/entities/${id}`);
+    },
   }),
 
   defineTool({

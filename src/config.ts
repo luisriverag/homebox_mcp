@@ -74,6 +74,13 @@ export const config = {
     // token on an otherwise reachable port lets anyone who can reach it
     // drive every tool this server exposes.
     authToken: process.env.MCP_AUTH_TOKEN ?? "",
+    // Express's JSON body parser defaults to 100KB. A real photo upload
+    // (items_attachment_add, actions_attach_photo_by_tag) or a non-trivial
+    // CSV import (items_import) is base64-encoded inside that same
+    // JSON-RPC request body over the http transport, and blows through
+    // that default long before the tool handler runs, failing with an
+    // opaque 413 instead of a clean tool error.
+    httpBodyLimitBytes: parsePositiveInt("MCP_HTTP_BODY_LIMIT_BYTES", 10 * 1024 * 1024),
   },
 };
 

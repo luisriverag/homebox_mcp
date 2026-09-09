@@ -1,7 +1,7 @@
 import QRCode from "qrcode";
 import { PDFDocument, PDFFont, PDFPage, PageSizes, StandardFonts, rgb } from "pdf-lib";
 import { config } from "../config.js";
-import { homebox } from "./client.js";
+import { HomeboxApiError, homebox } from "./client.js";
 import type { EntityOut } from "./entityMerge.js";
 
 /** PDF points per millimeter (PDF space is 72 points per inch). */
@@ -23,16 +23,38 @@ export interface LabelEntry {
   kind: "item" | "location" | "url";
 }
 
+export interface ResolvedLabelEntries {
+  entries: LabelEntry[];
+  /** IDs that no longer resolve to an entity (e.g. deleted since the caller last listed them). */
+  notFound: string[];
+}
+
 /**
  * Resolve item/location IDs to label entries by fetching each entity's name
  * and building its web-UI URL. Items and locations are both "entities" in
  * Homebox's API -- entityType.isLocation is what distinguishes them and
  * picks the URL route.
+ *
+ * A single stale id (deleted since the caller listed it) is skipped rather
+ * than aborting the whole batch -- a 50-id label sheet shouldn't fail
+ * outright because one of the 50 no longer exists. Any other error (auth,
+ * network, a non-404 API failure) still propagates, since that's not a
+ * per-id problem the caller can route around.
  */
-export async function resolveEntityLabelEntries(ids: string[]): Promise<LabelEntry[]> {
+export async function resolveEntityLabelEntries(ids: string[]): Promise<ResolvedLabelEntries> {
   const entries: LabelEntry[] = [];
+  const notFound: string[] = [];
   for (const id of ids) {
-    const entity = await homebox.get<EntityOut>(`/v1/entities/${id}`);
+    let entity: EntityOut;
+    try {
+      entity = await homebox.get<EntityOut>(`/v1/entities/${id}`);
+    } catch (err) {
+      if (err instanceof HomeboxApiError && err.status === 404) {
+        notFound.push(id);
+        continue;
+      }
+      throw err;
+    }
     const isLocation = Boolean(entity.entityType?.isLocation);
     entries.push({
       url: `${config.homebox.webUrl}/${isLocation ? "location" : "item"}/${id}`,
@@ -40,7 +62,7 @@ export async function resolveEntityLabelEntries(ids: string[]): Promise<LabelEnt
       kind: isLocation ? "location" : "item",
     });
   }
-  return entries;
+  return { entries, notFound };
 }
 
 /** Build label entries directly from caller-supplied URLs (e.g. a hand-picked list), inferring kind from the path. */

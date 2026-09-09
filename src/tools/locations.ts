@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { homebox } from "../homebox/client.js";
 import { resolveEntityTypeId } from "../homebox/entityTypes.js";
-import { entityUpdateBodyFromCurrent, type EntityOut } from "../homebox/entityMerge.js";
+import { assertEntityKind, entityUpdateBodyFromCurrent, fetchEntityOfKind, type EntityOut } from "../homebox/entityMerge.js";
 import { defineTool, safeId, type ToolDef } from "./types.js";
 
 const id = safeId.describe("Homebox location UUID");
@@ -48,7 +48,7 @@ export const locationTools: ToolDef<any>[] = [
     description: "Get details of a single location, including its child locations/items and item count.",
     write: false,
     shape: { id },
-    handler: ({ id }) => homebox.get(`/v1/entities/${id}`),
+    handler: ({ id }) => fetchEntityOfKind(id, "location"),
   }),
 
   defineTool({
@@ -92,6 +92,7 @@ export const locationTools: ToolDef<any>[] = [
     },
     handler: async ({ id, ...updates }) => {
       const current = await homebox.get<EntityOut>(`/v1/entities/${id}`);
+      assertEntityKind(current, "location", id);
       const body = { ...entityUpdateBodyFromCurrent(current), ...updates };
       return homebox.put(`/v1/entities/${id}`, body);
     },
@@ -102,6 +103,9 @@ export const locationTools: ToolDef<any>[] = [
     description: "Delete a location. Items inside it are not deleted but become unassigned.",
     write: true,
     shape: { id },
-    handler: ({ id }) => homebox.delete(`/v1/entities/${id}`),
+    handler: async ({ id }) => {
+      await fetchEntityOfKind(id, "location");
+      return homebox.delete(`/v1/entities/${id}`);
+    },
   }),
 ];
